@@ -160,6 +160,7 @@ function RallyTimer() {
   const watchIdRef = useRef(null);
   const atWakeLockRef = useRef(null);
   const prevSpeedStatus = useRef(null);
+  const [atConfirmStop, setAtConfirmStop] = useState(false);
 
   // Persist to localStorage whenever completed or savedSplits change
   useEffect(() => {
@@ -232,6 +233,7 @@ function RallyTimer() {
     setGpsError(null);
     setSpeedHistory([]);
     prevSpeedStatus.current = null;
+    setAtConfirmStop(false);
     setView("at-speed");
   };
 
@@ -239,14 +241,25 @@ function RallyTimer() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
     setAtTracking(true);
+    setAtConfirmStop(false);
     setGpsError(null);
   };
 
-  const stopGPS = () => {
+  const requestStopGPS = () => {
+    // Snapshot — GPS keeps running, just show confirm UI
+    setAtConfirmStop(true);
+  };
+
+  const cancelStopGPS = () => {
+    setAtConfirmStop(false);
+  };
+
+  const confirmStopGPS = () => {
     setAtTracking(false);
     setCurrentSpeed(null);
     setSpeedHistory([]);
     prevSpeedStatus.current = null;
+    setAtConfirmStop(false);
   };
 
   // GPS watchPosition effect
@@ -589,7 +602,7 @@ function RallyTimer() {
     return (
       <div style={{...S.container, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s", overflowY: "hidden"}}>
         <div style={S.topBar}>
-          <button style={S.backBtn} onClick={() => { stopGPS(); setView("menu"); }}>
+          <button style={S.backBtn} onClick={() => { confirmStopGPS(); setView("menu"); }}>
             {"\u2190"} BACK
           </button>
           <span style={S.topBarTitle}>{at.id} {"\u2014"} {at.name}</span>
@@ -599,10 +612,9 @@ function RallyTimer() {
           <div style={S.atSpeedScrollArea}>
             <div style={S.atSpeedInfo}>
               <div style={S.atSpeedInfoRow}>
-                <span style={S.atSpeedDay}>{at.day}</span>
-                <span style={S.atSpeedDist}>{at.dist}</span>
+                <span style={S.atSpeedDist}>{unitPref === "kph" ? at.dist.split(" / ")[0] : at.dist.split(" / ")[1]}</span>
+                <span style={S.atSpeedNote}>5 detection points {"\u2014"} hold steady speed</span>
               </div>
-              <div style={S.atSpeedNote}>5 detection points {"\u2014"} hold steady speed</div>
             </div>
 
             <div style={S.atTargetArea}>
@@ -615,13 +627,13 @@ function RallyTimer() {
                 {atTracking && displaySpeed !== null ? displaySpeed.toFixed(1) : "--"}
               </div>
               <div style={S.atSpeedUnit}>{unitPref}</div>
-              {atTracking && displaySpeed !== null && displaySpeed >= 2 && (
+              {atTracking && !atConfirmStop && displaySpeed !== null && displaySpeed >= 2 && (
                 <div style={{...S.atDeltaRow, color: statusColor}}>
                   <div style={S.atDeltaValue}>{deltaSign}{deltaAbs} {unitPref}</div>
                   <div style={S.atDeltaInstruction}>{instruction}</div>
                 </div>
               )}
-              {atTracking && (displaySpeed === null || displaySpeed < 2) && (
+              {atTracking && !atConfirmStop && (displaySpeed === null || displaySpeed < 2) && (
                 <div style={S.atWaitingText}>Acquiring speed...</div>
               )}
               {gpsError && (
@@ -636,7 +648,7 @@ function RallyTimer() {
               </div>
             </div>
 
-            {atTracking && gpsAccuracy !== null && (
+            {atTracking && !atConfirmStop && gpsAccuracy !== null && (
               <div style={{...S.atGpsStatus, color: gpsAccuracy < 10 ? "#4ade80" : gpsAccuracy < 25 ? "#fbbf24" : "#ef4444"}}>
                 GPS {"\u00B1"}{Math.round(gpsAccuracy)}m
               </div>
@@ -649,8 +661,17 @@ function RallyTimer() {
                 <div style={S.btnText}>START GPS</div>
                 <div style={S.btnSub}>begin speed tracking</div>
               </button>
+            ) : atConfirmStop ? (
+              <div style={S.atConfirmRow}>
+                <button style={S.atCancelBtn} onClick={cancelStopGPS}>
+                  <div style={S.atConfirmBtnText}>RESUME</div>
+                </button>
+                <button style={S.atConfirmStopBtn} onClick={confirmStopGPS}>
+                  <div style={S.atConfirmBtnText}>STOP</div>
+                </button>
+              </div>
             ) : (
-              <button style={S.atStopBtn} onClick={stopGPS}>
+              <button style={S.atStopBtn} onClick={requestStopGPS}>
                 <div style={S.btnText}>STOP</div>
                 <div style={S.btnSub}>end speed tracking</div>
               </button>
@@ -860,12 +881,12 @@ const S = {
   stageInfo: { padding: "16px 24px 8px" },
   stageRow: { display: "flex", alignItems: "baseline", gap: "12px" },
   stageId: {
-    fontSize: "22px", fontWeight: "900", color: "#fff", fontFamily: "'Helvetica Neue', sans-serif",
+    fontSize: "24px", fontWeight: "900", color: "#fff", fontFamily: "'Helvetica Neue', sans-serif",
   },
-  stageDist: { fontSize: "16px", color: "#667", fontFamily: "sans-serif" },
-  stageProgress: { marginLeft: "auto", fontSize: "13px", color: "#445" },
+  stageDist: { fontSize: "18px", color: "#889", fontFamily: "sans-serif" },
+  stageProgress: { marginLeft: "auto", fontSize: "15px", color: "#556" },
   targetRow: { display: "flex", alignItems: "baseline", gap: "10px", marginTop: "6px" },
-  targetLabel: { fontSize: "12px", fontWeight: "700", color: "#c41e3a", letterSpacing: "2px" },
+  targetLabel: { fontSize: "14px", fontWeight: "700", color: "#c41e3a", letterSpacing: "2px" },
   targetTime: {
     fontSize: "40px", fontWeight: "900", color: "#c41e3a", fontFamily: "'Helvetica Neue', sans-serif",
   },
@@ -888,7 +909,7 @@ const S = {
     flex: 1, overflowY: "auto", minHeight: 0,
   },
   btnContainerFixed: {
-    padding: "10px 20px", paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    padding: "12px 24px", paddingBottom: "calc(12px + env(safe-area-inset-bottom, 16px))",
     borderTop: "1px solid #1a1a25", backgroundColor: "#0a0a0f", flexShrink: 0,
   },
   startBtn: {
@@ -911,10 +932,10 @@ const S = {
     display: "flex", alignItems: "center", gap: "10px", padding: "8px 24px",
     background: "#111118", margin: "0 24px", borderRadius: "8px", fontFamily: "sans-serif",
   },
-  nextLabel: { fontSize: "10px", fontWeight: "700", color: "#556", letterSpacing: "1px" },
-  nextId: { fontSize: "13px", fontWeight: "700", color: "#aab" },
-  nextDist: { fontSize: "12px", color: "#556" },
-  nextTarget: { fontSize: "13px", fontWeight: "700", color: "#aab" },
+  nextLabel: { fontSize: "12px", fontWeight: "700", color: "#667", letterSpacing: "1px" },
+  nextId: { fontSize: "15px", fontWeight: "700", color: "#aab" },
+  nextDist: { fontSize: "14px", color: "#667" },
+  nextTarget: { fontSize: "15px", fontWeight: "700", color: "#aab" },
   splitsList: { padding: "8px 24px 24px" },
   splitsHeader: {
     fontSize: "11px", fontWeight: "700", color: "#445", letterSpacing: "2px",
@@ -977,22 +998,19 @@ const S = {
     padding: "16px 24px 8px",
   },
   atSpeedInfoRow: {
-    display: "flex", alignItems: "center", gap: "16px",
-  },
-  atSpeedDay: {
-    fontSize: "13px", fontWeight: "700", color: "#556", fontFamily: "sans-serif",
+    display: "flex", alignItems: "baseline", gap: "16px",
   },
   atSpeedDist: {
-    fontSize: "13px", color: "#667", fontFamily: "sans-serif",
+    fontSize: "18px", fontWeight: "700", color: "#aab", fontFamily: "sans-serif",
   },
   atSpeedNote: {
-    fontSize: "11px", color: "#445", fontFamily: "sans-serif", marginTop: "4px",
+    fontSize: "14px", color: "#667", fontFamily: "sans-serif",
   },
   atTargetArea: {
-    padding: "12px 24px", display: "flex", alignItems: "baseline", gap: "12px",
+    padding: "8px 24px", display: "flex", alignItems: "baseline", gap: "12px",
   },
   atTargetLabel: {
-    fontSize: "12px", fontWeight: "700", color: "#a78bfa", letterSpacing: "2px",
+    fontSize: "14px", fontWeight: "700", color: "#a78bfa", letterSpacing: "2px",
   },
   atTargetSpeed: {
     fontSize: "36px", fontWeight: "900", color: "#a78bfa",
@@ -1005,7 +1023,7 @@ const S = {
     fontSize: "120px", fontWeight: "200", lineHeight: 1, letterSpacing: "-4px",
   },
   atSpeedUnit: {
-    fontSize: "20px", fontWeight: "700", color: "#445", letterSpacing: "3px",
+    fontSize: "24px", fontWeight: "700", color: "#667", letterSpacing: "3px",
     marginTop: "4px", fontFamily: "sans-serif", textTransform: "uppercase",
   },
   atDeltaRow: {
@@ -1019,10 +1037,10 @@ const S = {
     fontFamily: "sans-serif",
   },
   atWaitingText: {
-    fontSize: "16px", color: "#556", marginTop: "20px", fontFamily: "sans-serif",
+    fontSize: "18px", color: "#667", marginTop: "20px", fontFamily: "sans-serif",
   },
   atErrorText: {
-    fontSize: "14px", color: "#ef4444", marginTop: "16px", fontFamily: "sans-serif",
+    fontSize: "16px", color: "#ef4444", marginTop: "16px", fontFamily: "sans-serif",
   },
   atUnitToggleRow: {
     textAlign: "center", padding: "8px 0",
@@ -1031,7 +1049,7 @@ const S = {
     display: "inline-flex", borderRadius: "6px", border: "1px solid #333", overflow: "hidden",
   },
   atUnitBtn: {
-    padding: "8px 20px", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+    padding: "10px 24px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
     border: "none", letterSpacing: "1px", fontFamily: "monospace",
   },
   atUnitBtnActive: {
@@ -1041,7 +1059,7 @@ const S = {
     background: "transparent", color: "#667",
   },
   atGpsStatus: {
-    fontSize: "11px", fontFamily: "sans-serif", textAlign: "center", padding: "4px 0",
+    fontSize: "13px", fontFamily: "sans-serif", textAlign: "center", padding: "4px 0",
   },
   atStartBtn: {
     width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #a78bfa",
@@ -1050,6 +1068,21 @@ const S = {
   atStopBtn: {
     width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #ef4444",
     background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", cursor: "pointer", textAlign: "center",
+  },
+  atConfirmRow: {
+    display: "flex", gap: "12px",
+  },
+  atCancelBtn: {
+    flex: 1, padding: "18px", borderRadius: "12px", border: "2px solid #22c55e",
+    background: "rgba(34, 197, 94, 0.1)", color: "#22c55e", cursor: "pointer", textAlign: "center",
+  },
+  atConfirmStopBtn: {
+    flex: 1, padding: "18px", borderRadius: "12px", border: "2px solid #ef4444",
+    background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", cursor: "pointer", textAlign: "center",
+  },
+  atConfirmBtnText: {
+    fontSize: "28px", fontWeight: "900", letterSpacing: "4px", fontFamily: "'Helvetica Neue', sans-serif",
+    padding: "8px 0",
   },
 };
 
