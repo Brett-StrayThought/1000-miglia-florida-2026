@@ -18,6 +18,14 @@ body { background: #0a0a0f; }
   padding-bottom: calc(20px + constant(safe-area-inset-bottom));
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 20px));
 }
+.container-fixed {
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
 .safe-top {
   padding-top: 56px !important;
   padding-top: calc(12px + constant(safe-area-inset-top)) !important;
@@ -671,7 +679,7 @@ function RallyTimer() {
     const elapsedStr = elMin > 0 ? `${elMin}:${String(elRemSec).padStart(2, "0")}` : `0:${String(elRemSec).padStart(2, "0")}`;
 
     return (
-      <div style={{...S.container, ...S.containerFixed, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s"}}>
+      <div className="container-fixed" style={{...S.container, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s"}}>
         <div className="safe-top" style={S.topBar}>
           <button style={S.backBtn} onClick={() => { confirmStopGPS(); setView("menu"); }}>
             {"\u2190"} BACK
@@ -775,7 +783,7 @@ function RallyTimer() {
   if (flash === "late") bgColor = "#0a0a2a";
 
   return (
-    <div style={{...S.container, ...S.containerFixed, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
+    <div className="container-fixed" style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
       <div className="safe-top" style={S.topBar}>
         <button style={S.backBtn} onClick={() => { handleReset(); setView("menu"); }}>
           {"\u2190"} BACK
@@ -903,9 +911,6 @@ const S = {
     fontFamily: "'SF Mono', 'Menlo', 'Courier New', monospace",
     userSelect: "none", WebkitUserSelect: "none",
     WebkitTapHighlightColor: "transparent", overflowY: "auto",
-  },
-  containerFixed: {
-    height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden",
   },
   menuHeader: { textAlign: "center", padding: "40px 20px 20px" },
   menuFlag: { fontSize: "36px", marginBottom: "8px" },
