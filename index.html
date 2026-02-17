@@ -589,7 +589,8 @@ function RallyTimer() {
         lines.push(`${at.id} ${at.name}`);
         lines.push(`  Target: ${r.targetKph} kph | ${r.targetMph} mph`);
         lines.push(`  Avg:    ${avgKph} kph (${signK}${Math.abs(dKph).toFixed(1)}) | ${avgMph} mph (${signM}${Math.abs(dMph).toFixed(1)})`);
-        lines.push(`  Distance: ${distKm} km | ${distMi} mi  Time: ${elapsed}`);
+        lines.push(`  Distance: ${distKm} km | ${distMi} mi`);
+        lines.push(`  Time: ${elapsed}`);
         lines.push("");
       }
     }
