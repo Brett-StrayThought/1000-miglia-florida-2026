@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>1000 Miglia Rally Timer</title>
+<title>1000 Miglia Participant Tools</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120' width='120' height='120'%3E%3Cdefs%3E%3CclipPath id='circle'%3E%3Ccircle cx='60' cy='60' r='44'/%3E%3C/clipPath%3E%3CclipPath id='leftHalf'%3E%3Cpolygon points='0,0 60,0 60,120 0,120'/%3E%3C/clipPath%3E%3CclipPath id='rightHalf'%3E%3Cpolygon points='60,0 120,0 120,120 60,120'/%3E%3C/clipPath%3E%3Cpattern id='checker' width='14' height='14' patternUnits='userSpaceOnUse'%3E%3Crect width='14' height='14' fill='%23fff'/%3E%3Crect width='7' height='7' fill='%23111'/%3E%3Crect x='7' y='7' width='7' height='7' fill='%23111'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='120' height='120' rx='26' fill='%230a0a14'/%3E%3Ccircle cx='60' cy='60' r='45' fill='none' stroke='%23333' stroke-width='2'/%3E%3Cg clip-path='url(%23circle)'%3E%3Cg clip-path='url(%23leftHalf)'%3E%3Crect width='120' height='120' fill='url(%23checker)' opacity='0.85'/%3E%3C/g%3E%3Cg clip-path='url(%23rightHalf)'%3E%3Crect width='120' height='120' fill='%23c41e3a'/%3E%3C/g%3E%3C/g%3E%3Cline x1='60' y1='16' x2='60' y2='104' stroke='%230a0a14' stroke-width='3'/%3E%3Ctext x='82' y='56' font-family='SF Mono,Menlo,monospace' font-size='11' font-weight='700' fill='%23fff' text-anchor='middle' opacity='0.6'%3E0%3C/text%3E%3Ctext x='82' y='72' font-family='SF Mono,Menlo,monospace' font-size='18' font-weight='900' fill='%23fff' text-anchor='middle'%3E.00%3C/text%3E%3Ccircle cx='60' cy='60' r='44' fill='none' stroke='%23555' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120' width='120' height='120'%3E%3Cdefs%3E%3CclipPath id='circle'%3E%3Ccircle cx='60' cy='60' r='44'/%3E%3C/clipPath%3E%3CclipPath id='leftHalf'%3E%3Cpolygon points='0,0 60,0 60,120 0,120'/%3E%3C/clipPath%3E%3CclipPath id='rightHalf'%3E%3Cpolygon points='60,0 120,0 120,120 60,120'/%3E%3C/clipPath%3E%3Cpattern id='checker' width='14' height='14' patternUnits='userSpaceOnUse'%3E%3Crect width='14' height='14' fill='%23fff'/%3E%3Crect width='7' height='7' fill='%23111'/%3E%3Crect x='7' y='7' width='7' height='7' fill='%23111'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='120' height='120' rx='26' fill='%230a0a14'/%3E%3Ccircle cx='60' cy='60' r='45' fill='none' stroke='%23333' stroke-width='2'/%3E%3Cg clip-path='url(%23circle)'%3E%3Cg clip-path='url(%23leftHalf)'%3E%3Crect width='120' height='120' fill='url(%23checker)' opacity='0.85'/%3E%3C/g%3E%3Cg clip-path='url(%23rightHalf)'%3E%3Crect width='120' height='120' fill='%23c41e3a'/%3E%3C/g%3E%3C/g%3E%3Cline x1='60' y1='16' x2='60' y2='104' stroke='%230a0a14' stroke-width='3'/%3E%3Ctext x='82' y='56' font-family='SF Mono,Menlo,monospace' font-size='11' font-weight='700' fill='%23fff' text-anchor='middle' opacity='0.6'%3E0%3C/text%3E%3Ctext x='82' y='72' font-family='SF Mono,Menlo,monospace' font-size='18' font-weight='900' fill='%23fff' text-anchor='middle'%3E.00%3C/text%3E%3Ccircle cx='60' cy='60' r='44' fill='none' stroke='%23555' stroke-width='1.5'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#0a0a0f">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0a0a0f; }
@@ -20,14 +23,20 @@ body { background: #0a0a0f; }
 const { useState, useRef, useCallback, useEffect } = React;
 
 // All TT stage data from the official itinerary
+const TRAINING_STAGES = [
+  { id: "T1", dist: "90 m", target: 15.0 },
+  { id: "T2", dist: "40 m", target: 7.0 },
+  { id: "T3", dist: "270 m", target: 32.0 },
+  { id: "T4", dist: "50 m", target: 8.0 },
+  { id: "T5", dist: "90 m", target: 13.0 },
+];
+
 const STAGES = {
-  "FRI \u2014 Training CTT": [
-    { id: "T1", dist: "90 m", target: 15.0 },
-    { id: "T2", dist: "40 m", target: 7.0 },
-    { id: "T3", dist: "270 m", target: 32.0 },
-    { id: "T4", dist: "50 m", target: 8.0 },
-    { id: "T5", dist: "90 m", target: 13.0 },
-  ],
+  "FRI \u2014 Training Ride 1": TRAINING_STAGES,
+  "FRI \u2014 Training Ride 2": TRAINING_STAGES,
+  "FRI \u2014 Training Ride 3": TRAINING_STAGES,
+  "FRI \u2014 Training Ride 4": TRAINING_STAGES,
+  "FRI \u2014 Training Ride 5": TRAINING_STAGES,
   "SAT \u2014 Centennial AM": [
     { id: "TT01", dist: "40 m", target: 9.0 },
     { id: "TT02", dist: "40 m", target: 7.0 },
@@ -93,17 +102,56 @@ const AT_INFO = [
   { id: "AT4", name: "Jupiter Island", speed: "45 kph / 28 mph", dist: "5.7 km / 3.5 mi", day: "SUN" },
 ];
 
+// Audio feedback
+let audioCtx = null;
+function playBeep(quality) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = "sine";
+  osc.frequency.value = quality === "perfect" ? 880 : quality === "early" ? 440 : 330;
+  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.15);
+}
+
+// localStorage helpers
+const STORAGE_KEY = "miglia_data";
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { completed: [], savedSplits: {} };
+    return JSON.parse(raw);
+  } catch { return { completed: [], savedSplits: {} }; }
+}
+function saveData(completed, savedSplits) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    completed: Array.from(completed),
+    savedSplits,
+  }));
+}
+
 function RallyTimer() {
+  const stored = useRef(loadData());
   const [view, setView] = useState("menu");
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [stageIndex, setStageIndex] = useState(0);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [splits, setSplits] = useState([]);
-  const [fridayRun, setFridayRun] = useState(1);
-  const lapStartRef = useRef(null);  // when current lap started
+  const [completed, setCompleted] = useState(() => new Set(stored.current.completed));
+  const [savedSplits, setSavedSplits] = useState(() => stored.current.savedSplits);
+  const lapStartRef = useRef(null);
   const rafRef = useRef(null);
   const [flash, setFlash] = useState(null);
+
+  // Persist to localStorage whenever completed or savedSplits change
+  useEffect(() => {
+    saveData(completed, savedSplits);
+  }, [completed, savedSplits]);
 
   const stages = selectedGroup ? STAGES[selectedGroup] : [];
   const currentStage = stages[stageIndex] || null;
@@ -117,13 +165,29 @@ function RallyTimer() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, []);
 
-  // START = first sensor crossed, begin counting
+  // Wake lock: keep screen on while timer is running
+  const wakeLockRef = useRef(null);
+  useEffect(() => {
+    if (running && navigator.wakeLock) {
+      navigator.wakeLock.request("screen").then((lock) => {
+        wakeLockRef.current = lock;
+      }).catch(() => {});
+    }
+    return () => {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [running]);
+
   const handleStart = () => {
+    // Init audio context on user gesture (required for iOS Safari)
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
     lapStartRef.current = performance.now();
     setElapsed(0);
     setRunning(true);
@@ -131,7 +195,6 @@ function RallyTimer() {
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // NEXT/FINISH = sensor crossed, record lap, reset counter (or stop if last)
   const handleLap = () => {
     if (!running || !currentStage) return;
     const now = performance.now();
@@ -140,42 +203,32 @@ function RallyTimer() {
     const absDelta = Math.abs(delta);
 
     let quality;
-    if (absDelta <= 0.3) quality = "perfect";
+    if (absDelta <= 0.5) quality = "perfect";
     else if (delta < 0) quality = "early";
     else quality = "late";
 
     setFlash(quality);
     setTimeout(() => setFlash(null), 800);
+    playBeep(quality);
 
-    setSplits((prev) => [
-      {
-        id: currentStage.id,
-        target: currentStage.target,
-        actual: lapTime,
-        delta,
-        quality,
-        run: selectedGroup?.includes("Training") ? fridayRun : null,
-      },
-      ...prev,
-    ]);
+    const newSplit = { id: currentStage.id, target: currentStage.target, actual: lapTime, delta, quality };
 
-    if (isLastStage && !selectedGroup?.includes("Training")) {
-      // FINISH — stop everything
+    setSplits((prev) => {
+      const updated = [newSplit, ...prev];
+      if (isLastStage) {
+        setSavedSplits((s) => ({ ...s, [selectedGroup]: updated }));
+      }
+      return updated;
+    });
+
+    if (isLastStage) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       setRunning(false);
       setElapsed(0);
       lapStartRef.current = null;
-      setStageIndex(stages.length); // triggers done screen
-    } else if (isLastStage && selectedGroup?.includes("Training")) {
-      // Training: finish this ride, stop timer, reset to T1 for next ride
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      setRunning(false);
-      setElapsed(0);
-      lapStartRef.current = null;
-      setStageIndex(0);
-      setFridayRun((r) => r + 1);
+      setStageIndex(stages.length);
+      setCompleted((prev) => new Set(prev).add(selectedGroup));
     } else {
-      // NEXT — reset lap counter immediately, keep running
       lapStartRef.current = now;
       setElapsed(0);
       setStageIndex(stageIndex + 1);
@@ -197,16 +250,131 @@ function RallyTimer() {
     return { sec, tenths, hundredths, totalSec };
   };
 
+  const toggleComplete = (key, e) => {
+    e.stopPropagation();
+    setCompleted((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        setSavedSplits((s) => { const n = { ...s }; delete n[key]; return n; });
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   const selectGroup = (group) => {
     setSelectedGroup(group);
-    setStageIndex(0);
-    setSplits([]);
     setElapsed(0);
     setRunning(false);
-    setFridayRun(1);
     lapStartRef.current = null;
+    if (completed.has(group) && savedSplits[group]) {
+      setSplits(savedSplits[group]);
+      setStageIndex(STAGES[group].length); // triggers done view
+    } else {
+      setStageIndex(0);
+      setSplits([]);
+    }
     setView("timer");
   };
+
+  const [shareMsg, setShareMsg] = useState(null);
+
+  const buildResultsText = () => {
+    const lines = ["1000 MIGLIA FLORIDA 2026 \u2014 RESULTS", ""];
+    const dayHeadings = [
+      { day: "FRIDAY FEB 20 (Day 1 \u2014 Training)", groups: [
+        "FRI \u2014 Training Ride 1", "FRI \u2014 Training Ride 2", "FRI \u2014 Training Ride 3",
+        "FRI \u2014 Training Ride 4", "FRI \u2014 Training Ride 5",
+      ]},
+      { day: "SATURDAY FEB 21 (Day 2 \u2014 Naples \u2192 Tampa)", groups: [
+        "SAT \u2014 Centennial AM", "SAT \u2014 Centennial PM", "SAT \u2014 Innisbrook",
+      ]},
+      { day: "SUNDAY FEB 22 (Day 3 \u2014 Tampa \u2192 WPB)", groups: [
+        "SUN \u2014 Innisbrook", "SUN \u2014 Lakeland AM", "SUN \u2014 Lakeland PM",
+        "SUN \u2014 Sebring",
+      ]},
+      { day: "MONDAY FEB 23 (Day 4 \u2014 WPB \u2192 Miami)", groups: [
+        "MON \u2014 Palm Beach",
+      ]},
+    ];
+    let hasResults = false;
+    for (const section of dayHeadings) {
+      const dayGroups = section.groups.filter((g) => savedSplits[g]);
+      if (dayGroups.length === 0) continue;
+      hasResults = true;
+      lines.push("=".repeat(40));
+      lines.push(section.day);
+      lines.push("=".repeat(40));
+      lines.push("");
+      for (const group of dayGroups) {
+        const shortName = group.split(" \u2014 ")[1];
+        lines.push(shortName);
+        const ordered = [...savedSplits[group]].reverse();
+        let totalDelta = 0;
+        for (const s of ordered) {
+          const sign = s.delta >= 0 ? "+" : "\u2212";
+          lines.push(`  ${s.id}  ${s.target.toFixed(1)}s \u2192 ${s.actual.toFixed(2)}s  (${sign}${Math.abs(s.delta).toFixed(2)}s)`);
+          totalDelta += Math.abs(s.delta);
+        }
+        lines.push(`  Total penalty: ${totalDelta.toFixed(2)}s`);
+        lines.push("");
+      }
+    }
+    if (!hasResults) return null;
+    return lines.join("\n");
+  };
+
+  const shareResults = async () => {
+    const text = buildResultsText();
+    if (!text) {
+      setShareMsg("No completed TTs to share");
+      setTimeout(() => setShareMsg(null), 2000);
+      return;
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "1000 Miglia Results", text });
+        return;
+      } catch {}
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareMsg("Copied to clipboard");
+    } catch {
+      setShareMsg("Could not share");
+    }
+    setTimeout(() => setShareMsg(null), 2000);
+  };
+
+  const SCHEDULE = [
+    { day: "FRIDAY FEB 20", label: "Training \u2014 JB Proving Grounds, Naples", items: [
+      { type: "tt", group: "FRI \u2014 Training Ride 1" },
+      { type: "tt", group: "FRI \u2014 Training Ride 2" },
+      { type: "tt", group: "FRI \u2014 Training Ride 3" },
+      { type: "tt", group: "FRI \u2014 Training Ride 4" },
+      { type: "tt", group: "FRI \u2014 Training Ride 5" },
+    ]},
+    { day: "SATURDAY FEB 21", label: "Leg 1 \u2014 Naples \u2192 Venice \u2192 Tampa", items: [
+      { type: "tt", group: "SAT \u2014 Centennial AM" },
+      { type: "tt", group: "SAT \u2014 Centennial PM" },
+      { type: "at", index: 0 },
+      { type: "tt", group: "SAT \u2014 Innisbrook" },
+    ]},
+    { day: "SUNDAY FEB 22", label: "Leg 2 \u2014 Tampa \u2192 Lakeland \u2192 Sebring \u2192 WPB", items: [
+      { type: "tt", group: "SUN \u2014 Innisbrook" },
+      { type: "tt", group: "SUN \u2014 Lakeland AM" },
+      { type: "tt", group: "SUN \u2014 Lakeland PM" },
+      { type: "at", index: 1 },
+      { type: "at", index: 2 },
+      { type: "tt", group: "SUN \u2014 Sebring" },
+      { type: "at", index: 3 },
+    ]},
+    { day: "MONDAY FEB 23", label: "Leg 3 \u2014 WPB \u2192 Miami", items: [
+      { type: "tt", group: "MON \u2014 Palm Beach" },
+    ]},
+  ];
 
   // MENU VIEW
   if (view === "menu") {
@@ -217,35 +385,60 @@ function RallyTimer() {
           <div style={S.menuTitle}>1000 MIGLIA</div>
           <div style={S.menuSubtitle}>EXPERIENCE FLORIDA 2026</div>
           <div style={S.menuDivider} />
-          <div style={S.menuLabel}>RALLY TIMER</div>
+          <div style={S.menuLabel}>PARTICIPANT TOOLS</div>
         </div>
 
-        <div style={S.menuSection}>
-          <div style={S.menuSectionTitle}>TIME TRIALS</div>
-          <div style={S.menuSectionSub}>Tap to start timing stages</div>
-          <div style={S.menuGrid}>
-            {Object.keys(STAGES).map((group) => {
-              const stgs = STAGES[group];
-              const totalTime = stgs.reduce((a, b) => a + b.target, 0);
-              return (
-                <button key={group} style={S.menuBtn} onClick={() => selectGroup(group)}>
-                  <span style={S.menuBtnLabel}>{group}</span>
-                  <span style={S.menuBtnInfo}>
-                    {stgs.length} stages {"\u2022"} {totalTime}s total
-                  </span>
-                </button>
-              );
-            })}
+        {SCHEDULE.map((day) => (
+          <div key={day.day} style={S.menuSection}>
+            <div style={S.menuDayTitle}>{day.day}</div>
+            <div style={S.menuSectionSub}>{day.label}</div>
+            <div style={S.menuGrid}>
+              {day.items.map((item, i) => {
+                if (item.type === "tt") {
+                  const stgs = STAGES[item.group];
+                  const shortName = item.group.split(" \u2014 ")[1];
+                  const isDone = completed.has(item.group);
+                  return (
+                    <button key={i} style={{...S.menuBtn, opacity: isDone ? 0.5 : 1}} onClick={() => selectGroup(item.group)}>
+                      <span style={S.menuBtnLabel}>
+                        <span style={S.ttBadge}>TT</span> {shortName}
+                      </span>
+                      <span style={S.menuBtnRight}>
+                        <span style={S.menuBtnInfo}>{stgs.length} stages</span>
+                        <span style={{...S.checkBtn, borderColor: isDone ? "#4ade80" : "#333", color: isDone ? "#4ade80" : "#333"}} onClick={(e) => toggleComplete(item.group, e)}>
+                          {isDone ? "\u2713" : ""}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                } else {
+                  const at = AT_INFO[item.index];
+                  const atKey = at.id;
+                  const isDone = completed.has(atKey);
+                  return (
+                    <button key={i} style={{...S.menuBtn, borderColor: "#3b2a5c", opacity: isDone ? 0.5 : 1}} onClick={() => setView("at")}>
+                      <span style={S.menuBtnLabel}>
+                        <span style={S.atBadge}>AT</span> {at.name}
+                      </span>
+                      <span style={S.menuBtnRight}>
+                        <span style={S.menuBtnInfo}>{at.speed.split(" / ")[0]}</span>
+                        <span style={{...S.checkBtn, borderColor: isDone ? "#4ade80" : "#333", color: isDone ? "#4ade80" : "#333"}} onClick={(e) => toggleComplete(atKey, e)}>
+                          {isDone ? "\u2713" : ""}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                }
+              })}
+            </div>
           </div>
-        </div>
+        ))}
 
-        <div style={S.menuSection}>
-          <div style={{...S.menuSectionTitle, color: "#2d8a56"}}>AVERAGE TRIALS</div>
-          <div style={S.menuSectionSub}>Target speeds {"\u2014"} use your speedometer</div>
-          <button style={{...S.menuBtn, borderColor: "#2d8a56"}} onClick={() => setView("at")}>
-            <span style={S.menuBtnLabel}>View AT Reference Card</span>
-            <span style={S.menuBtnInfo}>4 sections {"\u2022"} target speeds & distances</span>
+        <div style={S.shareContainer}>
+          <button style={S.shareBtn} onClick={shareResults}>
+            SHARE RESULTS
           </button>
+          {shareMsg && <div style={S.shareMsg}>{shareMsg}</div>}
         </div>
       </div>
     );
@@ -287,24 +480,21 @@ function RallyTimer() {
   }
 
   // TIMER VIEW
-  const done = stageIndex >= stages.length && !selectedGroup?.includes("Training");
+  const done = stageIndex >= stages.length;
   const { sec, tenths, hundredths } = formatTime(elapsed);
 
   let bgColor = "#0a0a0f";
   if (flash === "perfect") bgColor = "#0a2a0a";
-  if (flash === "early") bgColor = "#2a2a0a";
-  if (flash === "late") bgColor = "#2a0a0a";
+  if (flash === "early") bgColor = "#2a0a0a";
+  if (flash === "late") bgColor = "#0a0a2a";
 
   return (
-    <div style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
+    <div style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s", overflowY: done ? "auto" : "hidden"}}>
       <div style={S.topBar}>
         <button style={S.backBtn} onClick={() => { handleReset(); setView("menu"); }}>
           {"\u2190"} BACK
         </button>
         <span style={S.topBarTitle}>{selectedGroup}</span>
-        {selectedGroup?.includes("Training") && (
-          <span style={S.runBadge}>RUN {fridayRun}/20</span>
-        )}
       </div>
 
       {done ? (
@@ -318,53 +508,73 @@ function RallyTimer() {
           </div>
         </div>
       ) : currentStage ? (
-        <>
-          <div style={S.stageInfo}>
-            <div style={S.stageRow}>
-              <span style={S.stageId}>{currentStage.id}</span>
-              <span style={S.stageDist}>{currentStage.dist}</span>
-              <span style={S.stageProgress}>
-                {stageIndex + 1}/{stages.length}
-              </span>
+        <div style={S.timerLayout}>
+          <div style={S.timerScrollArea}>
+            <div style={S.stageInfo}>
+              <div style={S.stageRow}>
+                <span style={S.stageId}>{currentStage.id}</span>
+                <span style={S.stageDist}>{currentStage.dist}</span>
+                <span style={S.stageProgress}>
+                  {stageIndex + 1}/{stages.length}
+                </span>
+              </div>
+              <div style={S.targetRow}>
+                <span style={S.targetLabel}>TARGET</span>
+                <span style={S.targetTime}>{currentStage.target.toFixed(1)}s</span>
+              </div>
             </div>
-            <div style={S.targetRow}>
-              <span style={S.targetLabel}>TARGET</span>
-              <span style={S.targetTime}>{currentStage.target.toFixed(1)}s</span>
-            </div>
-          </div>
 
-          <div style={S.timerContainer}>
-            <div style={S.timerMain}>
-              <span style={S.timerSec}>{String(sec).padStart(2, "0")}</span>
-              <span style={S.timerDot}>.</span>
-              <span style={S.timerFrac}>
-                {tenths}{hundredths}
-              </span>
+            <div style={S.timerContainer}>
+              <div style={S.timerMain}>
+                <span style={S.timerSec}>{String(sec).padStart(2, "0")}</span>
+                <span style={S.timerDot}>.</span>
+                <span style={S.timerFrac}>
+                  {tenths}{hundredths}
+                </span>
+              </div>
+              {running && (
+                <div
+                  style={{
+                    ...S.targetIndicator,
+                    color:
+                      elapsed / 1000 < currentStage.target - 1
+                        ? "#888"
+                        : elapsed / 1000 < currentStage.target + 0.5
+                        ? "#4ade80"
+                        : "#ef4444",
+                  }}
+                >
+                  {elapsed / 1000 < currentStage.target
+                    ? `${(currentStage.target - elapsed / 1000).toFixed(1)}s to go`
+                    : `${((elapsed / 1000) - currentStage.target).toFixed(1)}s OVER`}
+                </div>
+              )}
             </div>
-            {running && (
-              <div
-                style={{
-                  ...S.targetIndicator,
-                  color:
-                    elapsed / 1000 < currentStage.target - 1
-                      ? "#888"
-                      : elapsed / 1000 < currentStage.target + 0.5
-                      ? "#4ade80"
-                      : "#ef4444",
-                }}
-              >
-                {elapsed / 1000 < currentStage.target
-                  ? `${(currentStage.target - elapsed / 1000).toFixed(1)}s to go`
-                  : `${((elapsed / 1000) - currentStage.target).toFixed(1)}s OVER`}
+
+            {running && !isLastStage && stages[stageIndex + 1] && (
+              <div style={S.nextStageBar}>
+                <span style={S.nextLabel}>NEXT UP</span>
+                <span style={S.nextId}>{stages[stageIndex + 1].id}</span>
+                <span style={S.nextDist}>{stages[stageIndex + 1].dist}</span>
+                <span style={S.nextTarget}>{stages[stageIndex + 1].target.toFixed(1)}s</span>
+              </div>
+            )}
+
+            {splits.length > 0 && (
+              <div style={S.splitsList}>
+                <div style={S.splitsHeader}>SPLITS</div>
+                {splits.slice(0, 10).map((s, i) => (
+                  <SplitRow key={i} split={s} />
+                ))}
               </div>
             )}
           </div>
 
-          <div style={S.btnContainer}>
+          <div style={{...S.btnContainerFixed, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
             {!running ? (
               <button style={S.startBtn} onClick={handleStart}>
                 <div style={S.btnText}>START</div>
-                <div style={S.btnSub}>{selectedGroup?.includes("Training") && fridayRun > 1 ? `ride ${fridayRun} \u2014 ` : ""}tap at first sensor</div>
+                <div style={S.btnSub}>tap at first sensor</div>
               </button>
             ) : isLastStage ? (
               <button style={S.finishBtn} onClick={handleLap}>
@@ -378,25 +588,7 @@ function RallyTimer() {
               </button>
             )}
           </div>
-
-          {running && !isLastStage && stages[stageIndex + 1] && (
-            <div style={S.nextStageBar}>
-              <span style={S.nextLabel}>NEXT UP</span>
-              <span style={S.nextId}>{stages[stageIndex + 1].id}</span>
-              <span style={S.nextDist}>{stages[stageIndex + 1].dist}</span>
-              <span style={S.nextTarget}>{stages[stageIndex + 1].target.toFixed(1)}s</span>
-            </div>
-          )}
-
-          {splits.length > 0 && (
-            <div style={S.splitsList}>
-              <div style={S.splitsHeader}>SPLITS</div>
-              {splits.slice(0, 10).map((s, i) => (
-                <SplitRow key={i} split={s} />
-              ))}
-            </div>
-          )}
-        </>
+        </div>
       ) : null}
     </div>
   );
@@ -404,14 +596,11 @@ function RallyTimer() {
 
 function SplitRow({ split }) {
   const deltaColor =
-    split.quality === "perfect" ? "#4ade80" : split.quality === "early" ? "#facc15" : "#ef4444";
+    split.quality === "perfect" ? "#4ade80" : split.quality === "early" ? "#ef4444" : "#60a5fa";
   const sign = split.delta >= 0 ? "+" : "\u2212";
   return (
     <div style={S.splitRow}>
-      <span style={S.splitId}>
-        {split.id}
-        {split.run ? ` R${split.run}` : ""}
-      </span>
+      <span style={S.splitId}>{split.id}</span>
       <span style={S.splitTarget}>{split.target.toFixed(1)}s</span>
       <span style={S.splitActual}>{split.actual.toFixed(2)}s</span>
       <span style={{...S.splitDelta, color: deltaColor}}>
@@ -424,14 +613,10 @@ function SplitRow({ split }) {
 // STYLES
 const S = {
   container: {
-    minHeight: "100vh",
-    backgroundColor: "#0a0a0f",
-    color: "#fff",
+    minHeight: "100vh", backgroundColor: "#0a0a0f", color: "#fff",
     fontFamily: "'SF Mono', 'Menlo', 'Courier New', monospace",
-    userSelect: "none",
-    WebkitUserSelect: "none",
-    WebkitTapHighlightColor: "transparent",
-    overflowY: "auto",
+    userSelect: "none", WebkitUserSelect: "none",
+    WebkitTapHighlightColor: "transparent", overflowY: "auto",
   },
   menuHeader: { textAlign: "center", padding: "40px 20px 20px" },
   menuFlag: { fontSize: "36px", marginBottom: "8px" },
@@ -448,10 +633,21 @@ const S = {
   },
   menuLabel: { fontSize: "20px", fontWeight: "700", letterSpacing: "6px", color: "#667" },
   menuSection: { padding: "12px 20px" },
-  menuSectionTitle: {
-    fontSize: "13px", fontWeight: "700", color: "#c41e3a", letterSpacing: "2px", marginBottom: "2px",
+  menuDayTitle: {
+    fontSize: "15px", fontWeight: "800", color: "#c41e3a", letterSpacing: "2px", marginBottom: "2px",
+    fontFamily: "'Helvetica Neue', sans-serif",
   },
   menuSectionSub: { fontSize: "11px", color: "#556", marginBottom: "10px", fontFamily: "sans-serif" },
+  ttBadge: {
+    display: "inline-block", fontSize: "10px", fontWeight: "800", color: "#d4a04a",
+    border: "1px solid #d4a04a", borderRadius: "3px", padding: "1px 4px", marginRight: "6px",
+    letterSpacing: "1px", verticalAlign: "middle", fontFamily: "monospace",
+  },
+  atBadge: {
+    display: "inline-block", fontSize: "10px", fontWeight: "800", color: "#a78bfa",
+    border: "1px solid #7c5cbf", borderRadius: "3px", padding: "1px 4px", marginRight: "6px",
+    letterSpacing: "1px", verticalAlign: "middle", fontFamily: "monospace",
+  },
   menuGrid: { display: "flex", flexDirection: "column", gap: "8px" },
   menuBtn: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -459,7 +655,14 @@ const S = {
     padding: "14px 16px", cursor: "pointer", color: "#fff", transition: "all 0.15s", textAlign: "left",
   },
   menuBtnLabel: { fontSize: "14px", fontWeight: "600", fontFamily: "'Helvetica Neue', sans-serif" },
+  menuBtnRight: { display: "flex", alignItems: "center", gap: "10px" },
   menuBtnInfo: { fontSize: "11px", color: "#667", fontFamily: "sans-serif" },
+  checkBtn: {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: "24px", height: "24px", borderRadius: "6px", border: "2px solid #333",
+    fontSize: "14px", fontWeight: "900", cursor: "pointer", background: "transparent",
+    flexShrink: 0,
+  },
   topBar: {
     display: "flex", alignItems: "center", padding: "12px 16px",
     borderBottom: "1px solid #1a1a25", gap: "12px",
@@ -472,7 +675,6 @@ const S = {
     flex: 1, fontSize: "14px", fontWeight: "700", letterSpacing: "1px", color: "#aab",
     fontFamily: "'Helvetica Neue', sans-serif",
   },
-  runBadge: { fontSize: "12px", fontWeight: "700", color: "#c41e3a", letterSpacing: "1px" },
   stageInfo: { padding: "16px 24px 8px" },
   stageRow: { display: "flex", alignItems: "baseline", gap: "12px" },
   stageId: {
@@ -495,9 +697,18 @@ const S = {
     fontSize: "64px", fontWeight: "200", color: "#667", lineHeight: 1, letterSpacing: "-2px",
   },
   targetIndicator: {
-    fontSize: "18px", fontWeight: "600", marginTop: "8px", fontFamily: "sans-serif", letterSpacing: "0.5px",
+    fontSize: "48px", fontWeight: "700", marginTop: "12px", fontFamily: "sans-serif", letterSpacing: "0.5px",
   },
-  btnContainer: { padding: "8px 24px 16px" },
+  timerLayout: {
+    display: "flex", flexDirection: "column", height: "calc(100vh - 49px)",
+  },
+  timerScrollArea: {
+    flex: 1, overflowY: "auto", minHeight: 0,
+  },
+  btnContainerFixed: {
+    padding: "12px 24px", paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+    borderTop: "1px solid #1a1a25", backgroundColor: "#0a0a0f", flexShrink: 0,
+  },
   startBtn: {
     width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #22c55e",
     background: "rgba(34, 197, 94, 0.1)", color: "#22c55e", cursor: "pointer", textAlign: "center",
@@ -521,7 +732,7 @@ const S = {
   nextLabel: { fontSize: "10px", fontWeight: "700", color: "#556", letterSpacing: "1px" },
   nextId: { fontSize: "13px", fontWeight: "700", color: "#aab" },
   nextDist: { fontSize: "12px", color: "#556" },
-  nextTarget: { fontSize: "14px", fontWeight: "700", color: "#c41e3a", marginLeft: "auto" },
+  nextTarget: { fontSize: "13px", fontWeight: "700", color: "#aab" },
   splitsList: { padding: "8px 24px 24px" },
   splitsHeader: {
     fontSize: "11px", fontWeight: "700", color: "#445", letterSpacing: "2px",
@@ -542,25 +753,36 @@ const S = {
     marginBottom: "24px", fontFamily: "'Helvetica Neue', sans-serif",
   },
   atCard: {
-    background: "#111118", border: "1px solid #1a3a2a", borderRadius: "10px",
+    background: "#111118", border: "1px solid #3b2a5c", borderRadius: "10px",
     padding: "16px", marginBottom: "12px",
   },
   atCardHeader: {
     display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px",
   },
-  atId: { fontSize: "14px", fontWeight: "900", color: "#4ade80", letterSpacing: "1px" },
+  atId: { fontSize: "14px", fontWeight: "900", color: "#a78bfa", letterSpacing: "1px" },
   atDay: { fontSize: "12px", color: "#556", fontWeight: "700", fontFamily: "sans-serif" },
   atName: {
     fontSize: "20px", fontWeight: "700", color: "#fff",
     fontFamily: "'Helvetica Neue', sans-serif", marginBottom: "8px",
   },
   atDetail: { display: "flex", gap: "20px", marginBottom: "6px" },
-  atSpeed: { fontSize: "16px", fontWeight: "700", color: "#4ade80", fontFamily: "sans-serif" },
+  atSpeed: { fontSize: "16px", fontWeight: "700", color: "#a78bfa", fontFamily: "sans-serif" },
   atDist: { fontSize: "14px", color: "#889", fontFamily: "sans-serif" },
   atNote: { fontSize: "11px", color: "#556", fontFamily: "sans-serif" },
   atTip: {
     fontSize: "13px", color: "#889", fontFamily: "sans-serif",
     textAlign: "center", padding: "16px", lineHeight: 1.5,
+  },
+  shareContainer: {
+    padding: "16px 20px 32px", textAlign: "center",
+  },
+  shareBtn: {
+    background: "transparent", border: "1px solid #333", borderRadius: "8px",
+    color: "#889", padding: "12px 24px", fontSize: "13px", fontWeight: "700",
+    letterSpacing: "2px", cursor: "pointer", fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  shareMsg: {
+    fontSize: "12px", color: "#4ade80", marginTop: "8px", fontFamily: "sans-serif",
   },
 };
 
