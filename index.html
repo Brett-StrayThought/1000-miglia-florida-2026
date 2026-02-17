@@ -575,16 +575,21 @@ function RallyTimer() {
       for (const at of atStages) {
         const r = savedSplits[at.id];
         const avgKph = r.avgKph.toFixed(1);
-        const deltaKph = (r.avgKph - r.targetKph).toFixed(1);
-        const sign = deltaKph >= 0 ? "+" : "\u2212";
+        const avgMph = r.avgMph.toFixed(1);
+        const dKph = r.avgKph - r.targetKph;
+        const dMph = r.avgMph - r.targetMph;
+        const signK = dKph >= 0 ? "+" : "\u2212";
+        const signM = dMph >= 0 ? "+" : "\u2212";
         const distKm = (r.distMeters / 1000).toFixed(2);
+        const distMi = (r.distMeters / 1609.344).toFixed(2);
         const elSec = Math.floor(r.elapsedMs / 1000);
         const elMin = Math.floor(elSec / 60);
         const elRemSec = elSec % 60;
         const elapsed = `${elMin}:${String(elRemSec).padStart(2, "0")}`;
         lines.push(`${at.id} ${at.name}`);
-        lines.push(`  Target: ${r.targetKph} kph  Avg: ${avgKph} kph  (${sign}${Math.abs(parseFloat(deltaKph)).toFixed(1)})`);
-        lines.push(`  Distance: ${distKm} km  Time: ${elapsed}`);
+        lines.push(`  Target: ${r.targetKph} kph / ${r.targetMph} mph`);
+        lines.push(`  Avg:    ${avgKph} kph (${signK}${Math.abs(dKph).toFixed(1)}) / ${avgMph} mph (${signM}${Math.abs(dMph).toFixed(1)})`);
+        lines.push(`  Distance: ${distKm} km / ${distMi} mi  Time: ${elapsed}`);
         lines.push("");
       }
     }
