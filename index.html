@@ -359,16 +359,18 @@ function RallyTimer() {
           setCurrentSpeed(0);
         }
         // Accumulate distance for average speed
-        const { latitude, longitude } = position.coords;
+        const { latitude, longitude, accuracy } = position.coords;
         if (lastPosRef.current) {
           const d = haversine(lastPosRef.current.lat, lastPosRef.current.lon, latitude, longitude);
-          // Only accumulate if movement is larger than GPS accuracy (filter jitter)
-          if (d > Math.max(position.coords.accuracy * 0.5, 2)) {
+          // Only accumulate if movement exceeds GPS accuracy (filter jitter/drift)
+          if (d > Math.max(accuracy, 5)) {
             setAtTotalDist((prev) => prev + d);
             lastPosRef.current = { lat: latitude, lon: longitude };
           }
         } else {
-          lastPosRef.current = { lat: latitude, lon: longitude };
+          // First fix — just record position, don't measure from it yet
+          // Wait for a second reading to establish baseline
+          lastPosRef.current = { lat: latitude, lon: longitude, isFirst: true };
         }
       },
       (error) => {
