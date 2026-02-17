@@ -587,9 +587,9 @@ function RallyTimer() {
         const elRemSec = elSec % 60;
         const elapsed = `${elMin}:${String(elRemSec).padStart(2, "0")}`;
         lines.push(`${at.id} ${at.name}`);
-        lines.push(`  Target: ${r.targetKph} kph / ${r.targetMph} mph`);
-        lines.push(`  Avg:    ${avgKph} kph (${signK}${Math.abs(dKph).toFixed(1)}) / ${avgMph} mph (${signM}${Math.abs(dMph).toFixed(1)})`);
-        lines.push(`  Distance: ${distKm} km / ${distMi} mi  Time: ${elapsed}`);
+        lines.push(`  Target: ${r.targetKph} kph | ${r.targetMph} mph`);
+        lines.push(`  Avg:    ${avgKph} kph (${signK}${Math.abs(dKph).toFixed(1)}) | ${avgMph} mph (${signM}${Math.abs(dMph).toFixed(1)})`);
+        lines.push(`  Distance: ${distKm} km | ${distMi} mi  Time: ${elapsed}`);
         lines.push("");
       }
     }
