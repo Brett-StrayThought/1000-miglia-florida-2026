@@ -671,7 +671,7 @@ function RallyTimer() {
     const elapsedStr = elMin > 0 ? `${elMin}:${String(elRemSec).padStart(2, "0")}` : `0:${String(elRemSec).padStart(2, "0")}`;
 
     return (
-      <div style={{...S.container, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s", overflowY: "hidden"}}>
+      <div style={{...S.container, ...S.containerFixed, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s"}}>
         <div className="safe-top" style={S.topBar}>
           <button style={S.backBtn} onClick={() => { confirmStopGPS(); setView("menu"); }}>
             {"\u2190"} BACK
@@ -775,7 +775,7 @@ function RallyTimer() {
   if (flash === "late") bgColor = "#0a0a2a";
 
   return (
-    <div style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s", overflowY: done ? "auto" : "hidden"}}>
+    <div style={{...S.container, ...S.containerFixed, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
       <div className="safe-top" style={S.topBar}>
         <button style={S.backBtn} onClick={() => { handleReset(); setView("menu"); }}>
           {"\u2190"} BACK
@@ -904,6 +904,9 @@ const S = {
     userSelect: "none", WebkitUserSelect: "none",
     WebkitTapHighlightColor: "transparent", overflowY: "auto",
   },
+  containerFixed: {
+    height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden",
+  },
   menuHeader: { textAlign: "center", padding: "40px 20px 20px" },
   menuFlag: { fontSize: "36px", marginBottom: "8px" },
   menuTitle: {
@@ -986,7 +989,7 @@ const S = {
     fontSize: "48px", fontWeight: "700", marginTop: "12px", fontFamily: "sans-serif", letterSpacing: "0.5px",
   },
   timerLayout: {
-    display: "flex", flexDirection: "column", height: "calc(100vh - 49px)",
+    display: "flex", flexDirection: "column", flex: 1, minHeight: 0,
   },
   timerScrollArea: {
     flex: 1, overflowY: "auto", minHeight: 0,
@@ -1071,7 +1074,7 @@ const S = {
   },
   // AT GPS Speed View
   atSpeedLayout: {
-    display: "flex", flexDirection: "column", height: "calc(100vh - 49px)",
+    display: "flex", flexDirection: "column", flex: 1, minHeight: 0,
   },
   atSpeedScrollArea: {
     flex: 1, overflowY: "auto", minHeight: 0,
