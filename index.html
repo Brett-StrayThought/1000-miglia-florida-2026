@@ -97,10 +97,10 @@ const STAGES = {
 };
 
 const AT_INFO = [
-  { id: "AT1", name: "Casey Key", speed: "37 kph / 23 mph", dist: "6.1 km / 3.8 mi", day: "SAT" },
-  { id: "AT2", name: "Scenic Hwy", speed: "63 kph / 39 mph", dist: "6.9 km / 4.3 mi", day: "SUN" },
-  { id: "AT3", name: "Sebring Track", speed: "49 kph / 30 mph", dist: "4.2 km / 2.6 mi", day: "SUN" },
-  { id: "AT4", name: "Jupiter Island", speed: "45 kph / 28 mph", dist: "5.7 km / 3.5 mi", day: "SUN" },
+  { id: "AT1", name: "Casey Key", speed: "37 kph / 23 mph", dist: "6.1 km / 3.8 mi", day: "SAT", targetKph: 37, targetMph: 23 },
+  { id: "AT2", name: "Scenic Hwy", speed: "63 kph / 39 mph", dist: "6.9 km / 4.3 mi", day: "SUN", targetKph: 63, targetMph: 39 },
+  { id: "AT3", name: "Sebring Track", speed: "49 kph / 30 mph", dist: "4.2 km / 2.6 mi", day: "SUN", targetKph: 49, targetMph: 30 },
+  { id: "AT4", name: "Jupiter Island", speed: "45 kph / 28 mph", dist: "5.7 km / 3.5 mi", day: "SUN", targetKph: 45, targetMph: 28 },
 ];
 
 // Audio feedback
@@ -149,6 +149,18 @@ function RallyTimer() {
   const rafRef = useRef(null);
   const [flash, setFlash] = useState(null);
 
+  // AT GPS speed tracking
+  const [selectedAT, setSelectedAT] = useState(null);
+  const [atTracking, setAtTracking] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [gpsError, setGpsError] = useState(null);
+  const [speedHistory, setSpeedHistory] = useState([]);
+  const [unitPref, setUnitPref] = useState("kph");
+  const watchIdRef = useRef(null);
+  const atWakeLockRef = useRef(null);
+  const prevSpeedStatus = useRef(null);
+
   // Persist to localStorage whenever completed or savedSplits change
   useEffect(() => {
     saveData(completed, savedSplits);
@@ -184,6 +196,122 @@ function RallyTimer() {
       }
     };
   }, [running]);
+
+  // GPS tracking for AT stages
+  const msToKph = (ms) => ms * 3.6;
+  const msToMph = (ms) => ms * 2.237;
+
+  const smoothedSpeed = speedHistory.length > 0
+    ? speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length
+    : null;
+
+  const displaySpeed = smoothedSpeed !== null
+    ? (unitPref === "kph" ? msToKph(smoothedSpeed) : msToMph(smoothedSpeed))
+    : null;
+
+  const getSpeedStatus = (current, target) => {
+    if (current === null) return "waiting";
+    const pct = ((current - target) / target) * 100;
+    if (Math.abs(pct) <= 3) return "on-pace";
+    if (pct > 0) return "too-fast";
+    return "too-slow";
+  };
+
+  const speedStatusColor = (status) => {
+    if (status === "on-pace") return "#4ade80";
+    if (status === "too-fast") return "#ef4444";
+    if (status === "too-slow") return "#60a5fa";
+    return "#667";
+  };
+
+  const startATTracking = (atIndex) => {
+    setSelectedAT(atIndex);
+    setAtTracking(false);
+    setCurrentSpeed(null);
+    setGpsAccuracy(null);
+    setGpsError(null);
+    setSpeedHistory([]);
+    prevSpeedStatus.current = null;
+    setView("at-speed");
+  };
+
+  const beginGPS = () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    setAtTracking(true);
+    setGpsError(null);
+  };
+
+  const stopGPS = () => {
+    setAtTracking(false);
+    setCurrentSpeed(null);
+    setSpeedHistory([]);
+    prevSpeedStatus.current = null;
+  };
+
+  // GPS watchPosition effect
+  useEffect(() => {
+    if (!atTracking) return;
+    if (!navigator.geolocation) {
+      setGpsError("GPS not available on this device");
+      return;
+    }
+    const id = navigator.geolocation.watchPosition(
+      (position) => {
+        setGpsError(null);
+        setGpsAccuracy(position.coords.accuracy);
+        const rawSpeed = position.coords.speed;
+        if (rawSpeed !== null && rawSpeed >= 0) {
+          setCurrentSpeed(rawSpeed);
+          setSpeedHistory((prev) => [...prev, rawSpeed].slice(-5));
+        } else {
+          setCurrentSpeed(0);
+        }
+      },
+      (error) => {
+        if (error.code === 1) setGpsError("Location permission denied");
+        else if (error.code === 2) setGpsError("GPS signal unavailable");
+        else if (error.code === 3) setGpsError("GPS timed out");
+        else setGpsError("GPS error");
+      },
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+    );
+    watchIdRef.current = id;
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      watchIdRef.current = null;
+    };
+  }, [atTracking]);
+
+  // Wake lock for AT GPS tracking
+  useEffect(() => {
+    if (atTracking && navigator.wakeLock) {
+      navigator.wakeLock.request("screen").then((lock) => {
+        atWakeLockRef.current = lock;
+      }).catch(() => {});
+    }
+    return () => {
+      if (atWakeLockRef.current) {
+        atWakeLockRef.current.release().catch(() => {});
+        atWakeLockRef.current = null;
+      }
+    };
+  }, [atTracking]);
+
+  // Audio feedback on speed zone transitions
+  useEffect(() => {
+    if (!atTracking || displaySpeed === null || selectedAT === null) return;
+    const at = AT_INFO[selectedAT];
+    const target = unitPref === "kph" ? at.targetKph : at.targetMph;
+    if (displaySpeed < 2) return; // ignore when nearly stopped
+    const status = getSpeedStatus(displaySpeed, target);
+    if (status !== prevSpeedStatus.current && status !== "waiting") {
+      if (status === "on-pace") playBeep("perfect");
+      else if (status === "too-fast") playBeep("early");
+      else playBeep("late");
+      prevSpeedStatus.current = status;
+    }
+  }, [displaySpeed, atTracking, selectedAT, unitPref]);
 
   const handleStart = () => {
     // Init audio context on user gesture (required for iOS Safari)
@@ -417,7 +545,7 @@ function RallyTimer() {
                   const atKey = at.id;
                   const isDone = completed.has(atKey);
                   return (
-                    <button key={i} style={{...S.menuBtn, borderColor: "#3b2a5c", opacity: isDone ? 0.5 : 1}} onClick={() => setView("at")}>
+                    <button key={i} style={{...S.menuBtn, borderColor: "#3b2a5c", opacity: isDone ? 0.5 : 1}} onClick={() => startATTracking(item.index)}>
                       <span style={S.menuBtnLabel}>
                         <span style={S.atBadge}>AT</span> {at.name}
                       </span>
@@ -445,35 +573,88 @@ function RallyTimer() {
     );
   }
 
-  // AT REFERENCE VIEW
-  if (view === "at") {
+  // AT GPS SPEED VIEW
+  if (view === "at-speed" && selectedAT !== null) {
+    const at = AT_INFO[selectedAT];
+    const targetSpeed = unitPref === "kph" ? at.targetKph : at.targetMph;
+    const speedStatus = getSpeedStatus(displaySpeed, targetSpeed);
+    const statusColor = speedStatusColor(speedStatus);
+    const atBg = speedStatus === "on-pace" ? "#0a2a0a" : speedStatus === "too-fast" ? "#2a0a0a" : speedStatus === "too-slow" ? "#0a0a2a" : "#0a0a0f";
+
+    const delta = displaySpeed !== null ? displaySpeed - targetSpeed : null;
+    const deltaAbs = delta !== null ? Math.abs(delta).toFixed(1) : null;
+    const deltaSign = delta !== null ? (delta >= 0 ? "+" : "\u2212") : null;
+    const instruction = speedStatus === "on-pace" ? "ON PACE" : speedStatus === "too-fast" ? "SLOW DOWN" : speedStatus === "too-slow" ? "SPEED UP" : "";
+
     return (
-      <div style={S.container}>
+      <div style={{...S.container, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s", overflowY: "hidden"}}>
         <div style={S.topBar}>
-          <button style={S.backBtn} onClick={() => setView("menu")}>
+          <button style={S.backBtn} onClick={() => { stopGPS(); setView("menu"); }}>
             {"\u2190"} BACK
           </button>
-          <span style={S.topBarTitle}>AVERAGE TRIALS</span>
+          <span style={S.topBarTitle}>{at.id} {"\u2014"} {at.name}</span>
         </div>
-        <div style={{padding: "16px 20px"}}>
-          {AT_INFO.map((at) => (
-            <div key={at.id} style={S.atCard}>
-              <div style={S.atCardHeader}>
-                <span style={S.atId}>{at.id}</span>
-                <span style={S.atDay}>{at.day}</span>
+
+        <div style={S.atSpeedLayout}>
+          <div style={S.atSpeedScrollArea}>
+            <div style={S.atSpeedInfo}>
+              <div style={S.atSpeedInfoRow}>
+                <span style={S.atSpeedDay}>{at.day}</span>
+                <span style={S.atSpeedDist}>{at.dist}</span>
               </div>
-              <div style={S.atName}>{at.name}</div>
-              <div style={S.atDetail}>
-                <div style={S.atSpeed}>{at.speed}</div>
-                <div style={S.atDist}>{at.dist}</div>
-              </div>
-              <div style={S.atNote}>5 detection points {"\u2014"} hold steady speed</div>
+              <div style={S.atSpeedNote}>5 detection points {"\u2014"} hold steady speed</div>
             </div>
-          ))}
-          <div style={S.atTip}>
-            {"\uD83D\uDCA1"} Use your car's speedometer or a GPS speed app.
-            <br />
-            Too fast is penalized the same as too slow!
+
+            <div style={S.atTargetArea}>
+              <div style={S.atTargetLabel}>TARGET</div>
+              <div style={S.atTargetSpeed}>{targetSpeed} {unitPref}</div>
+            </div>
+
+            <div style={S.atSpeedDisplay}>
+              <div style={{...S.atCurrentSpeed, color: atTracking ? statusColor : "#333"}}>
+                {atTracking && displaySpeed !== null ? displaySpeed.toFixed(1) : "--"}
+              </div>
+              <div style={S.atSpeedUnit}>{unitPref}</div>
+              {atTracking && displaySpeed !== null && displaySpeed >= 2 && (
+                <div style={{...S.atDeltaRow, color: statusColor}}>
+                  <div style={S.atDeltaValue}>{deltaSign}{deltaAbs} {unitPref}</div>
+                  <div style={S.atDeltaInstruction}>{instruction}</div>
+                </div>
+              )}
+              {atTracking && (displaySpeed === null || displaySpeed < 2) && (
+                <div style={S.atWaitingText}>Acquiring speed...</div>
+              )}
+              {gpsError && (
+                <div style={S.atErrorText}>{gpsError}</div>
+              )}
+            </div>
+
+            <div style={S.atUnitToggleRow}>
+              <div style={S.atUnitToggle}>
+                <button style={{...S.atUnitBtn, ...(unitPref === "kph" ? S.atUnitBtnActive : S.atUnitBtnInactive)}} onClick={() => setUnitPref("kph")}>KPH</button>
+                <button style={{...S.atUnitBtn, ...(unitPref === "mph" ? S.atUnitBtnActive : S.atUnitBtnInactive)}} onClick={() => setUnitPref("mph")}>MPH</button>
+              </div>
+            </div>
+
+            {atTracking && gpsAccuracy !== null && (
+              <div style={{...S.atGpsStatus, color: gpsAccuracy < 10 ? "#4ade80" : gpsAccuracy < 25 ? "#fbbf24" : "#ef4444"}}>
+                GPS {"\u00B1"}{Math.round(gpsAccuracy)}m
+              </div>
+            )}
+          </div>
+
+          <div style={{...S.btnContainerFixed, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s"}}>
+            {!atTracking ? (
+              <button style={S.atStartBtn} onClick={beginGPS}>
+                <div style={S.btnText}>START GPS</div>
+                <div style={S.btnSub}>begin speed tracking</div>
+              </button>
+            ) : (
+              <button style={S.atStopBtn} onClick={stopGPS}>
+                <div style={S.btnText}>STOP</div>
+                <div style={S.btnSub}>end speed tracking</div>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -707,19 +888,19 @@ const S = {
     flex: 1, overflowY: "auto", minHeight: 0,
   },
   btnContainerFixed: {
-    padding: "12px 24px", paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+    padding: "10px 20px", paddingBottom: "max(16px, env(safe-area-inset-bottom))",
     borderTop: "1px solid #1a1a25", backgroundColor: "#0a0a0f", flexShrink: 0,
   },
   startBtn: {
-    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #22c55e",
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #22c55e",
     background: "rgba(34, 197, 94, 0.1)", color: "#22c55e", cursor: "pointer", textAlign: "center",
   },
   splitBtn: {
-    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #c41e3a",
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #c41e3a",
     background: "rgba(196, 30, 58, 0.15)", color: "#fff", cursor: "pointer", textAlign: "center",
   },
   finishBtn: {
-    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #f59e0b",
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #f59e0b",
     background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", cursor: "pointer", textAlign: "center",
   },
   btnText: {
@@ -784,6 +965,91 @@ const S = {
   },
   shareMsg: {
     fontSize: "12px", color: "#4ade80", marginTop: "8px", fontFamily: "sans-serif",
+  },
+  // AT GPS Speed View
+  atSpeedLayout: {
+    display: "flex", flexDirection: "column", height: "calc(100vh - 49px)",
+  },
+  atSpeedScrollArea: {
+    flex: 1, overflowY: "auto", minHeight: 0,
+  },
+  atSpeedInfo: {
+    padding: "16px 24px 8px",
+  },
+  atSpeedInfoRow: {
+    display: "flex", alignItems: "center", gap: "16px",
+  },
+  atSpeedDay: {
+    fontSize: "13px", fontWeight: "700", color: "#556", fontFamily: "sans-serif",
+  },
+  atSpeedDist: {
+    fontSize: "13px", color: "#667", fontFamily: "sans-serif",
+  },
+  atSpeedNote: {
+    fontSize: "11px", color: "#445", fontFamily: "sans-serif", marginTop: "4px",
+  },
+  atTargetArea: {
+    padding: "12px 24px", display: "flex", alignItems: "baseline", gap: "12px",
+  },
+  atTargetLabel: {
+    fontSize: "12px", fontWeight: "700", color: "#a78bfa", letterSpacing: "2px",
+  },
+  atTargetSpeed: {
+    fontSize: "36px", fontWeight: "900", color: "#a78bfa",
+    fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  atSpeedDisplay: {
+    textAlign: "center", padding: "24px 0 12px",
+  },
+  atCurrentSpeed: {
+    fontSize: "120px", fontWeight: "200", lineHeight: 1, letterSpacing: "-4px",
+  },
+  atSpeedUnit: {
+    fontSize: "20px", fontWeight: "700", color: "#445", letterSpacing: "3px",
+    marginTop: "4px", fontFamily: "sans-serif", textTransform: "uppercase",
+  },
+  atDeltaRow: {
+    marginTop: "16px",
+  },
+  atDeltaValue: {
+    fontSize: "28px", fontWeight: "700", fontFamily: "sans-serif",
+  },
+  atDeltaInstruction: {
+    fontSize: "16px", fontWeight: "600", letterSpacing: "2px", marginTop: "4px",
+    fontFamily: "sans-serif",
+  },
+  atWaitingText: {
+    fontSize: "16px", color: "#556", marginTop: "20px", fontFamily: "sans-serif",
+  },
+  atErrorText: {
+    fontSize: "14px", color: "#ef4444", marginTop: "16px", fontFamily: "sans-serif",
+  },
+  atUnitToggleRow: {
+    textAlign: "center", padding: "8px 0",
+  },
+  atUnitToggle: {
+    display: "inline-flex", borderRadius: "6px", border: "1px solid #333", overflow: "hidden",
+  },
+  atUnitBtn: {
+    padding: "8px 20px", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+    border: "none", letterSpacing: "1px", fontFamily: "monospace",
+  },
+  atUnitBtnActive: {
+    background: "#a78bfa", color: "#0a0a0f",
+  },
+  atUnitBtnInactive: {
+    background: "transparent", color: "#667",
+  },
+  atGpsStatus: {
+    fontSize: "11px", fontFamily: "sans-serif", textAlign: "center", padding: "4px 0",
+  },
+  atStartBtn: {
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #a78bfa",
+    background: "rgba(167, 139, 250, 0.1)", color: "#a78bfa", cursor: "pointer", textAlign: "center",
+  },
+  atStopBtn: {
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #ef4444",
+    background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", cursor: "pointer", textAlign: "center",
   },
 };
 
