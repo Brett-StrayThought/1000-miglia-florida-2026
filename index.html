@@ -185,6 +185,7 @@ function RallyTimer() {
   const [atTotalDist, setAtTotalDist] = useState(0); // meters
   const lastPosRef = useRef(null);
   const atTimerRef = useRef(null);
+  const [atDone, setAtDone] = useState(false); // showing saved results
 
   // Persist to localStorage whenever completed or savedSplits change
   useEffect(() => {
@@ -265,6 +266,7 @@ function RallyTimer() {
   };
 
   const startATTracking = (atIndex) => {
+    const at = AT_INFO[atIndex];
     setSelectedAT(atIndex);
     setAtTracking(false);
     setCurrentSpeed(null);
@@ -274,9 +276,18 @@ function RallyTimer() {
     prevSpeedStatus.current = null;
     setAtConfirmStop(false);
     setAtStartTime(null);
-    setAtElapsed(0);
-    setAtTotalDist(0);
     lastPosRef.current = null;
+    // Restore saved result if completed
+    if (completed.has(at.id) && savedSplits[at.id]) {
+      const r = savedSplits[at.id];
+      setAtTotalDist(r.distMeters);
+      setAtElapsed(r.elapsedMs);
+      setAtDone(true);
+    } else {
+      setAtElapsed(0);
+      setAtTotalDist(0);
+      setAtDone(false);
+    }
     setView("at-speed");
   };
 
@@ -301,12 +312,30 @@ function RallyTimer() {
     setAtConfirmStop(false);
   };
 
-  const confirmStopGPS = () => {
+  const confirmStopGPS = (saveResult) => {
+    if (atTimerRef.current) { clearInterval(atTimerRef.current); atTimerRef.current = null; }
+    // Save result if we have data
+    if (saveResult && selectedAT !== null && atTotalDist > 0 && atElapsed > 0) {
+      const at = AT_INFO[selectedAT];
+      const avgMs = atTotalDist / (atElapsed / 1000);
+      const result = {
+        id: at.id,
+        name: at.name,
+        avgKph: msToKph(avgMs),
+        avgMph: msToMph(avgMs),
+        targetKph: at.targetKph,
+        targetMph: at.targetMph,
+        distMeters: atTotalDist,
+        elapsedMs: atElapsed,
+      };
+      setSavedSplits((s) => ({ ...s, [at.id]: result }));
+      setCompleted((prev) => new Set(prev).add(at.id));
+      setAtDone(true);
+    }
     setAtTracking(false);
     setCurrentSpeed(null);
     setSpeedHistory([]);
     lastPosRef.current = null;
-    if (atTimerRef.current) { clearInterval(atTimerRef.current); atTimerRef.current = null; }
     prevSpeedStatus.current = null;
     setAtConfirmStop(false);
   };
@@ -533,6 +562,30 @@ function RallyTimer() {
         lines.push("");
       }
     }
+    // AT stage results
+    const atStages = AT_INFO.filter((at) => savedSplits[at.id]);
+    if (atStages.length > 0) {
+      hasResults = true;
+      lines.push("=".repeat(40));
+      lines.push("AVERAGE TRIALS (AT)");
+      lines.push("=".repeat(40));
+      lines.push("");
+      for (const at of atStages) {
+        const r = savedSplits[at.id];
+        const avgKph = r.avgKph.toFixed(1);
+        const deltaKph = (r.avgKph - r.targetKph).toFixed(1);
+        const sign = deltaKph >= 0 ? "+" : "\u2212";
+        const distKm = (r.distMeters / 1000).toFixed(2);
+        const elSec = Math.floor(r.elapsedMs / 1000);
+        const elMin = Math.floor(elSec / 60);
+        const elRemSec = elSec % 60;
+        const elapsed = `${elMin}:${String(elRemSec).padStart(2, "0")}`;
+        lines.push(`${at.id} ${at.name}`);
+        lines.push(`  Target: ${r.targetKph} kph  Avg: ${avgKph} kph  (${sign}${Math.abs(parseFloat(deltaKph)).toFixed(1)})`);
+        lines.push(`  Distance: ${distKm} km  Time: ${elapsed}`);
+        lines.push("");
+      }
+    }
     if (!hasResults) return null;
     return lines.join("\n");
   };
@@ -540,7 +593,7 @@ function RallyTimer() {
   const shareResults = async () => {
     const text = buildResultsText();
     if (!text) {
-      setShareMsg("No completed TTs to share");
+      setShareMsg("No completed stages to share");
       setTimeout(() => setShareMsg(null), 2000);
       return;
     }
@@ -702,12 +755,12 @@ function RallyTimer() {
             </div>
 
             <div style={S.atSpeedDisplay}>
-              <div style={S.atAvgLabel}>AVG SPEED</div>
-              <div style={{...S.atCurrentSpeed, color: atTracking ? statusColor : "#333"}}>
-                {atTracking && avgSpeed !== null ? avgSpeed.toFixed(1) : "--"}
+              <div style={S.atAvgLabel}>{atDone && !atTracking ? "RESULT" : "AVG SPEED"}</div>
+              <div style={{...S.atCurrentSpeed, color: (atTracking || atDone) ? statusColor : "#333"}}>
+                {(atTracking || atDone) && avgSpeed !== null ? avgSpeed.toFixed(1) : "--"}
               </div>
               <div style={S.atSpeedUnit}>{unitPref}</div>
-              {atTracking && !atConfirmStop && avgSpeed !== null && (
+              {(atTracking || atDone) && avgSpeed !== null && !atConfirmStop && (
                 <div style={{...S.atDeltaRow, color: statusColor}}>
                   <div style={S.atDeltaValue}>{deltaSign}{deltaAbs} {unitPref}</div>
                   <div style={S.atDeltaInstruction}>{instruction}</div>
@@ -721,16 +774,16 @@ function RallyTimer() {
               )}
             </div>
 
-            {atTracking && !atConfirmStop && (
+            {(atTracking && !atConfirmStop) || (atDone && !atTracking) ? (
               <div style={S.atLiveRow}>
-                <div style={S.atLiveLabel}>LIVE</div>
+                {atTracking && <><div style={S.atLiveLabel}>LIVE</div>
                 <div style={S.atLiveSpeed}>{liveSpeed !== null ? liveSpeed.toFixed(0) : "--"} {unitPref}</div>
-                <div style={S.atLiveSep}>{"\u2022"}</div>
+                <div style={S.atLiveSep}>{"\u2022"}</div></>}
                 <div style={S.atLiveLabel}>{distTraveled} {distUnit}</div>
                 <div style={S.atLiveSep}>{"\u2022"}</div>
                 <div style={S.atLiveLabel}>{elapsedStr}</div>
               </div>
-            )}
+            ) : null}
 
             <div style={S.atUnitToggleRow}>
               <div style={S.atUnitToggle}>
@@ -748,16 +801,16 @@ function RallyTimer() {
 
           <div className="btn-container-fixed" style={{...S.btnContainerFixed, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s"}}>
             {!atTracking ? (
-              <button style={S.atStartBtn} onClick={beginGPS}>
-                <div style={S.btnText}>START GPS</div>
-                <div style={S.btnSub}>begin speed tracking</div>
+              <button style={S.atStartBtn} onClick={() => { setAtDone(false); setAtElapsed(0); setAtTotalDist(0); beginGPS(); }}>
+                <div style={S.btnText}>{atDone ? "RUN AGAIN" : "START GPS"}</div>
+                <div style={S.btnSub}>{atDone ? "start new attempt" : "begin speed tracking"}</div>
               </button>
             ) : atConfirmStop ? (
               <div style={S.atConfirmRow}>
                 <button style={S.atCancelBtn} onClick={cancelStopGPS}>
                   <div style={S.atConfirmBtnText}>RESUME</div>
                 </button>
-                <button style={S.atConfirmStopBtn} onClick={confirmStopGPS}>
+                <button style={S.atConfirmStopBtn} onClick={() => confirmStopGPS(true)}>
                   <div style={S.atConfirmBtnText}>STOP</div>
                 </button>
               </div>
