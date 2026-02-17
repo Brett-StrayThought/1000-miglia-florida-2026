@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>1000 Miglia Rally Timer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useRef, useCallback, useEffect } = React;
+
+// All TT stage data from the official itinerary
+const STAGES = {
+  "FRI \u2014 Training CTT": [
+    { id: "T1", dist: "90 m", target: 15.0 },
+    { id: "T2", dist: "40 m", target: 7.0 },
+    { id: "T3", dist: "270 m", target: 32.0 },
+    { id: "T4", dist: "50 m", target: 8.0 },
+    { id: "T5", dist: "90 m", target: 13.0 },
+  ],
+  "SAT \u2014 Centennial AM": [
+    { id: "TT01", dist: "40 m", target: 9.0 },
+    { id: "TT02", dist: "40 m", target: 7.0 },
+    { id: "TT03", dist: "50 m", target: 12.0 },
+    { id: "TT04", dist: "50 m", target: 9.0 },
+    { id: "TT05", dist: "60 m", target: 10.0 },
+  ],
+  "SAT \u2014 Centennial PM": [
+    { id: "TT06", dist: "40 m", target: 9.0 },
+    { id: "TT07", dist: "40 m", target: 7.0 },
+    { id: "TT08", dist: "50 m", target: 12.0 },
+    { id: "TT09", dist: "50 m", target: 9.0 },
+    { id: "TT10", dist: "60 m", target: 10.0 },
+  ],
+  "SAT \u2014 Innisbrook": [
+    { id: "TT11", dist: "60 m", target: 13.0 },
+    { id: "TT12", dist: "60 m", target: 12.0 },
+    { id: "TT13", dist: "60 m", target: 11.0 },
+    { id: "TT14", dist: "50 m", target: 11.0 },
+    { id: "TT15", dist: "40 m", target: 8.0 },
+  ],
+  "SUN \u2014 Innisbrook": [
+    { id: "TT16", dist: "40 m", target: 9.0 },
+    { id: "TT17", dist: "50 m", target: 11.0 },
+    { id: "TT18", dist: "60 m", target: 11.0 },
+    { id: "TT19", dist: "60 m", target: 12.0 },
+    { id: "TT20", dist: "60 m", target: 13.0 },
+  ],
+  "SUN \u2014 Lakeland AM": [
+    { id: "TT21", dist: "50 m", target: 10.0 },
+    { id: "TT22", dist: "40 m", target: 8.0 },
+    { id: "TT23", dist: "50 m", target: 9.0 },
+    { id: "TT24", dist: "50 m", target: 8.0 },
+    { id: "TT25", dist: "40 m", target: 8.0 },
+  ],
+  "SUN \u2014 Lakeland PM": [
+    { id: "TT26", dist: "50 m", target: 10.0 },
+    { id: "TT27", dist: "40 m", target: 8.0 },
+    { id: "TT28", dist: "50 m", target: 9.0 },
+    { id: "TT29", dist: "50 m", target: 8.0 },
+    { id: "TT30", dist: "40 m", target: 8.0 },
+  ],
+  "SUN \u2014 Sebring": [
+    { id: "TT31", dist: "70 m", target: 13.0 },
+    { id: "TT32", dist: "90 m", target: 12.0 },
+    { id: "TT33", dist: "110 m", target: 20.0 },
+    { id: "TT34", dist: "40 m", target: 7.0 },
+    { id: "TT35", dist: "80 m", target: 13.0 },
+  ],
+  "MON \u2014 Palm Beach": [
+    { id: "TT36", dist: "40 m", target: 9.0 },
+    { id: "TT37", dist: "40 m", target: 7.0 },
+    { id: "TT38", dist: "40 m", target: 7.0 },
+    { id: "TT39", dist: "60 m", target: 11.0 },
+    { id: "TT40", dist: "40 m", target: 8.0 },
+  ],
+};
+
+const AT_INFO = [
+  { id: "AT1", name: "Casey Key", speed: "37 kph / 23 mph", dist: "6.1 km / 3.8 mi", day: "SAT" },
+  { id: "AT2", name: "Scenic Hwy", speed: "63 kph / 39 mph", dist: "6.9 km / 4.3 mi", day: "SUN" },
+  { id: "AT3", name: "Sebring Track", speed: "49 kph / 30 mph", dist: "4.2 km / 2.6 mi", day: "SUN" },
+  { id: "AT4", name: "Jupiter Island", speed: "45 kph / 28 mph", dist: "5.7 km / 3.5 mi", day: "SUN" },
+];
+
+function RallyTimer() {
+  const [view, setView] = useState("menu");
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [stageIndex, setStageIndex] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [splits, setSplits] = useState([]);
+  const [fridayRun, setFridayRun] = useState(1);
+  const lapStartRef = useRef(null);  // when current lap started
+  const rafRef = useRef(null);
+  const [flash, setFlash] = useState(null);
+
+  const stages = selectedGroup ? STAGES[selectedGroup] : [];
+  const currentStage = stages[stageIndex] || null;
+  const isLastStage = stageIndex >= stages.length - 1;
+
+  const tick = useCallback(() => {
+    if (lapStartRef.current) {
+      setElapsed(performance.now() - lapStartRef.current);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // START = first sensor crossed, begin counting
+  const handleStart = () => {
+    lapStartRef.current = performance.now();
+    setElapsed(0);
+    setRunning(true);
+    setFlash(null);
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  // NEXT/FINISH = sensor crossed, record lap, reset counter (or stop if last)
+  const handleLap = () => {
+    if (!running || !currentStage) return;
+    const now = performance.now();
+    const lapTime = (now - lapStartRef.current) / 1000;
+    const delta = lapTime - currentStage.target;
+    const absDelta = Math.abs(delta);
+
+    let quality;
+    if (absDelta <= 0.3) quality = "perfect";
+    else if (delta < 0) quality = "early";
+    else quality = "late";
+
+    setFlash(quality);
+    setTimeout(() => setFlash(null), 800);
+
+    setSplits((prev) => [
+      {
+        id: currentStage.id,
+        target: currentStage.target,
+        actual: lapTime,
+        delta,
+        quality,
+        run: selectedGroup?.includes("Training") ? fridayRun : null,
+      },
+      ...prev,
+    ]);
+
+    if (isLastStage && !selectedGroup?.includes("Training")) {
+      // FINISH — stop everything
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setRunning(false);
+      setElapsed(0);
+      lapStartRef.current = null;
+      setStageIndex(stages.length); // triggers done screen
+    } else if (isLastStage && selectedGroup?.includes("Training")) {
+      // Training: finish this ride, stop timer, reset to T1 for next ride
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setRunning(false);
+      setElapsed(0);
+      lapStartRef.current = null;
+      setStageIndex(0);
+      setFridayRun((r) => r + 1);
+    } else {
+      // NEXT — reset lap counter immediately, keep running
+      lapStartRef.current = now;
+      setElapsed(0);
+      setStageIndex(stageIndex + 1);
+    }
+  };
+
+  const handleReset = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setRunning(false);
+    setElapsed(0);
+    lapStartRef.current = null;
+  };
+
+  const formatTime = (ms) => {
+    const totalSec = ms / 1000;
+    const sec = Math.floor(totalSec);
+    const tenths = Math.floor((totalSec - sec) * 10);
+    const hundredths = Math.floor((totalSec - sec) * 100) % 10;
+    return { sec, tenths, hundredths, totalSec };
+  };
+
+  const selectGroup = (group) => {
+    setSelectedGroup(group);
+    setStageIndex(0);
+    setSplits([]);
+    setElapsed(0);
+    setRunning(false);
+    setFridayRun(1);
+    lapStartRef.current = null;
+    setView("timer");
+  };
+
+  // MENU VIEW
+  if (view === "menu") {
+    return (
+      <div style={S.container}>
+        <div style={S.menuHeader}>
+          <div style={S.menuFlag}>{"\uD83C\uDFC1"}</div>
+          <div style={S.menuTitle}>1000 MIGLIA</div>
+          <div style={S.menuSubtitle}>EXPERIENCE FLORIDA 2026</div>
+          <div style={S.menuDivider} />
+          <div style={S.menuLabel}>RALLY TIMER</div>
+        </div>
+
+        <div style={S.menuSection}>
+          <div style={S.menuSectionTitle}>TIME TRIALS</div>
+          <div style={S.menuSectionSub}>Tap to start timing stages</div>
+          <div style={S.menuGrid}>
+            {Object.keys(STAGES).map((group) => {
+              const stgs = STAGES[group];
+              const totalTime = stgs.reduce((a, b) => a + b.target, 0);
+              return (
+                <button key={group} style={S.menuBtn} onClick={() => selectGroup(group)}>
+                  <span style={S.menuBtnLabel}>{group}</span>
+                  <span style={S.menuBtnInfo}>
+                    {stgs.length} stages {"\u2022"} {totalTime}s total
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={S.menuSection}>
+          <div style={{...S.menuSectionTitle, color: "#2d8a56"}}>AVERAGE TRIALS</div>
+          <div style={S.menuSectionSub}>Target speeds {"\u2014"} use your speedometer</div>
+          <button style={{...S.menuBtn, borderColor: "#2d8a56"}} onClick={() => setView("at")}>
+            <span style={S.menuBtnLabel}>View AT Reference Card</span>
+            <span style={S.menuBtnInfo}>4 sections {"\u2022"} target speeds & distances</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // AT REFERENCE VIEW
+  if (view === "at") {
+    return (
+      <div style={S.container}>
+        <div style={S.topBar}>
+          <button style={S.backBtn} onClick={() => setView("menu")}>
+            {"\u2190"} BACK
+          </button>
+          <span style={S.topBarTitle}>AVERAGE TRIALS</span>
+        </div>
+        <div style={{padding: "16px 20px"}}>
+          {AT_INFO.map((at) => (
+            <div key={at.id} style={S.atCard}>
+              <div style={S.atCardHeader}>
+                <span style={S.atId}>{at.id}</span>
+                <span style={S.atDay}>{at.day}</span>
+              </div>
+              <div style={S.atName}>{at.name}</div>
+              <div style={S.atDetail}>
+                <div style={S.atSpeed}>{at.speed}</div>
+                <div style={S.atDist}>{at.dist}</div>
+              </div>
+              <div style={S.atNote}>5 detection points {"\u2014"} hold steady speed</div>
+            </div>
+          ))}
+          <div style={S.atTip}>
+            {"\uD83D\uDCA1"} Use your car's speedometer or a GPS speed app.
+            <br />
+            Too fast is penalized the same as too slow!
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // TIMER VIEW
+  const done = stageIndex >= stages.length && !selectedGroup?.includes("Training");
+  const { sec, tenths, hundredths } = formatTime(elapsed);
+
+  let bgColor = "#0a0a0f";
+  if (flash === "perfect") bgColor = "#0a2a0a";
+  if (flash === "early") bgColor = "#2a2a0a";
+  if (flash === "late") bgColor = "#2a0a0a";
+
+  return (
+    <div style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
+      <div style={S.topBar}>
+        <button style={S.backBtn} onClick={() => { handleReset(); setView("menu"); }}>
+          {"\u2190"} BACK
+        </button>
+        <span style={S.topBarTitle}>{selectedGroup}</span>
+        {selectedGroup?.includes("Training") && (
+          <span style={S.runBadge}>RUN {fridayRun}/20</span>
+        )}
+      </div>
+
+      {done ? (
+        <div style={S.doneContainer}>
+          <div style={S.doneEmoji}>{"\uD83C\uDFC1"}</div>
+          <div style={S.doneText}>ALL STAGES COMPLETE</div>
+          <div style={S.splitsList}>
+            {splits.map((s, i) => (
+              <SplitRow key={i} split={s} />
+            ))}
+          </div>
+        </div>
+      ) : currentStage ? (
+        <>
+          <div style={S.stageInfo}>
+            <div style={S.stageRow}>
+              <span style={S.stageId}>{currentStage.id}</span>
+              <span style={S.stageDist}>{currentStage.dist}</span>
+              <span style={S.stageProgress}>
+                {stageIndex + 1}/{stages.length}
+              </span>
+            </div>
+            <div style={S.targetRow}>
+              <span style={S.targetLabel}>TARGET</span>
+              <span style={S.targetTime}>{currentStage.target.toFixed(1)}s</span>
+            </div>
+          </div>
+
+          <div style={S.timerContainer}>
+            <div style={S.timerMain}>
+              <span style={S.timerSec}>{String(sec).padStart(2, "0")}</span>
+              <span style={S.timerDot}>.</span>
+              <span style={S.timerFrac}>
+                {tenths}{hundredths}
+              </span>
+            </div>
+            {running && (
+              <div
+                style={{
+                  ...S.targetIndicator,
+                  color:
+                    elapsed / 1000 < currentStage.target - 1
+                      ? "#888"
+                      : elapsed / 1000 < currentStage.target + 0.5
+                      ? "#4ade80"
+                      : "#ef4444",
+                }}
+              >
+                {elapsed / 1000 < currentStage.target
+                  ? `${(currentStage.target - elapsed / 1000).toFixed(1)}s to go`
+                  : `${((elapsed / 1000) - currentStage.target).toFixed(1)}s OVER`}
+              </div>
+            )}
+          </div>
+
+          <div style={S.btnContainer}>
+            {!running ? (
+              <button style={S.startBtn} onClick={handleStart}>
+                <div style={S.btnText}>START</div>
+                <div style={S.btnSub}>{selectedGroup?.includes("Training") && fridayRun > 1 ? `ride ${fridayRun} \u2014 ` : ""}tap at first sensor</div>
+              </button>
+            ) : isLastStage ? (
+              <button style={S.finishBtn} onClick={handleLap}>
+                <div style={S.btnText}>FINISH</div>
+                <div style={S.btnSub}>tap at last sensor</div>
+              </button>
+            ) : (
+              <button style={S.splitBtn} onClick={handleLap}>
+                <div style={S.btnText}>NEXT</div>
+                <div style={S.btnSub}>tap at sensor {stageIndex + 2} of {stages.length}</div>
+              </button>
+            )}
+          </div>
+
+          {running && !isLastStage && stages[stageIndex + 1] && (
+            <div style={S.nextStageBar}>
+              <span style={S.nextLabel}>NEXT UP</span>
+              <span style={S.nextId}>{stages[stageIndex + 1].id}</span>
+              <span style={S.nextDist}>{stages[stageIndex + 1].dist}</span>
+              <span style={S.nextTarget}>{stages[stageIndex + 1].target.toFixed(1)}s</span>
+            </div>
+          )}
+
+          {splits.length > 0 && (
+            <div style={S.splitsList}>
+              <div style={S.splitsHeader}>SPLITS</div>
+              {splits.slice(0, 10).map((s, i) => (
+                <SplitRow key={i} split={s} />
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function SplitRow({ split }) {
+  const deltaColor =
+    split.quality === "perfect" ? "#4ade80" : split.quality === "early" ? "#facc15" : "#ef4444";
+  const sign = split.delta >= 0 ? "+" : "\u2212";
+  return (
+    <div style={S.splitRow}>
+      <span style={S.splitId}>
+        {split.id}
+        {split.run ? ` R${split.run}` : ""}
+      </span>
+      <span style={S.splitTarget}>{split.target.toFixed(1)}s</span>
+      <span style={S.splitActual}>{split.actual.toFixed(2)}s</span>
+      <span style={{...S.splitDelta, color: deltaColor}}>
+        {sign}{Math.abs(split.delta).toFixed(2)}s
+      </span>
+    </div>
+  );
+}
+
+// STYLES
+const S = {
+  container: {
+    minHeight: "100vh",
+    backgroundColor: "#0a0a0f",
+    color: "#fff",
+    fontFamily: "'SF Mono', 'Menlo', 'Courier New', monospace",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    WebkitTapHighlightColor: "transparent",
+    overflowY: "auto",
+  },
+  menuHeader: { textAlign: "center", padding: "40px 20px 20px" },
+  menuFlag: { fontSize: "36px", marginBottom: "8px" },
+  menuTitle: {
+    fontSize: "28px", fontWeight: "900", letterSpacing: "4px", color: "#fff",
+    fontFamily: "'Helvetica Neue', 'Arial Black', sans-serif",
+  },
+  menuSubtitle: {
+    fontSize: "11px", letterSpacing: "3px", color: "#c41e3a", marginTop: "4px",
+    fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  menuDivider: {
+    width: "60px", height: "3px", background: "#c41e3a", margin: "16px auto", borderRadius: "2px",
+  },
+  menuLabel: { fontSize: "20px", fontWeight: "700", letterSpacing: "6px", color: "#667" },
+  menuSection: { padding: "12px 20px" },
+  menuSectionTitle: {
+    fontSize: "13px", fontWeight: "700", color: "#c41e3a", letterSpacing: "2px", marginBottom: "2px",
+  },
+  menuSectionSub: { fontSize: "11px", color: "#556", marginBottom: "10px", fontFamily: "sans-serif" },
+  menuGrid: { display: "flex", flexDirection: "column", gap: "8px" },
+  menuBtn: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    background: "transparent", border: "1px solid #333", borderRadius: "8px",
+    padding: "14px 16px", cursor: "pointer", color: "#fff", transition: "all 0.15s", textAlign: "left",
+  },
+  menuBtnLabel: { fontSize: "14px", fontWeight: "600", fontFamily: "'Helvetica Neue', sans-serif" },
+  menuBtnInfo: { fontSize: "11px", color: "#667", fontFamily: "sans-serif" },
+  topBar: {
+    display: "flex", alignItems: "center", padding: "12px 16px",
+    borderBottom: "1px solid #1a1a25", gap: "12px",
+  },
+  backBtn: {
+    background: "transparent", border: "1px solid #333", borderRadius: "6px",
+    color: "#999", padding: "6px 12px", fontSize: "12px", cursor: "pointer", fontFamily: "sans-serif",
+  },
+  topBarTitle: {
+    flex: 1, fontSize: "14px", fontWeight: "700", letterSpacing: "1px", color: "#aab",
+    fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  runBadge: { fontSize: "12px", fontWeight: "700", color: "#c41e3a", letterSpacing: "1px" },
+  stageInfo: { padding: "16px 24px 8px" },
+  stageRow: { display: "flex", alignItems: "baseline", gap: "12px" },
+  stageId: {
+    fontSize: "22px", fontWeight: "900", color: "#fff", fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  stageDist: { fontSize: "16px", color: "#667", fontFamily: "sans-serif" },
+  stageProgress: { marginLeft: "auto", fontSize: "13px", color: "#445" },
+  targetRow: { display: "flex", alignItems: "baseline", gap: "10px", marginTop: "6px" },
+  targetLabel: { fontSize: "12px", fontWeight: "700", color: "#c41e3a", letterSpacing: "2px" },
+  targetTime: {
+    fontSize: "40px", fontWeight: "900", color: "#c41e3a", fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  timerContainer: { textAlign: "center", padding: "20px 0" },
+  timerMain: { display: "inline-flex", alignItems: "baseline" },
+  timerSec: {
+    fontSize: "120px", fontWeight: "200", lineHeight: 1, letterSpacing: "-4px", color: "#fff",
+  },
+  timerDot: { fontSize: "80px", fontWeight: "200", color: "#445", lineHeight: 1 },
+  timerFrac: {
+    fontSize: "64px", fontWeight: "200", color: "#667", lineHeight: 1, letterSpacing: "-2px",
+  },
+  targetIndicator: {
+    fontSize: "18px", fontWeight: "600", marginTop: "8px", fontFamily: "sans-serif", letterSpacing: "0.5px",
+  },
+  btnContainer: { padding: "8px 24px 16px" },
+  startBtn: {
+    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #22c55e",
+    background: "rgba(34, 197, 94, 0.1)", color: "#22c55e", cursor: "pointer", textAlign: "center",
+  },
+  splitBtn: {
+    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #c41e3a",
+    background: "rgba(196, 30, 58, 0.15)", color: "#fff", cursor: "pointer", textAlign: "center",
+  },
+  finishBtn: {
+    width: "100%", padding: "24px", borderRadius: "12px", border: "2px solid #f59e0b",
+    background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", cursor: "pointer", textAlign: "center",
+  },
+  btnText: {
+    fontSize: "28px", fontWeight: "900", letterSpacing: "4px", fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  btnSub: { fontSize: "12px", color: "#889", marginTop: "4px", fontFamily: "sans-serif", letterSpacing: "1px" },
+  nextStageBar: {
+    display: "flex", alignItems: "center", gap: "10px", padding: "8px 24px",
+    background: "#111118", margin: "0 24px", borderRadius: "8px", fontFamily: "sans-serif",
+  },
+  nextLabel: { fontSize: "10px", fontWeight: "700", color: "#556", letterSpacing: "1px" },
+  nextId: { fontSize: "13px", fontWeight: "700", color: "#aab" },
+  nextDist: { fontSize: "12px", color: "#556" },
+  nextTarget: { fontSize: "14px", fontWeight: "700", color: "#c41e3a", marginLeft: "auto" },
+  splitsList: { padding: "8px 24px 24px" },
+  splitsHeader: {
+    fontSize: "11px", fontWeight: "700", color: "#445", letterSpacing: "2px",
+    marginBottom: "8px", borderBottom: "1px solid #1a1a25", paddingBottom: "6px",
+  },
+  splitRow: {
+    display: "flex", alignItems: "center", padding: "8px 0",
+    borderBottom: "1px solid #111118", gap: "8px", fontFamily: "sans-serif",
+  },
+  splitId: { fontSize: "13px", fontWeight: "700", color: "#aab", width: "70px" },
+  splitTarget: { fontSize: "13px", color: "#556", width: "55px" },
+  splitActual: { fontSize: "14px", fontWeight: "600", color: "#fff", width: "65px" },
+  splitDelta: { fontSize: "14px", fontWeight: "700", marginLeft: "auto", textAlign: "right" },
+  doneContainer: { textAlign: "center", padding: "40px 24px 0" },
+  doneEmoji: { fontSize: "48px", marginBottom: "12px" },
+  doneText: {
+    fontSize: "18px", fontWeight: "900", color: "#4ade80", letterSpacing: "3px",
+    marginBottom: "24px", fontFamily: "'Helvetica Neue', sans-serif",
+  },
+  atCard: {
+    background: "#111118", border: "1px solid #1a3a2a", borderRadius: "10px",
+    padding: "16px", marginBottom: "12px",
+  },
+  atCardHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px",
+  },
+  atId: { fontSize: "14px", fontWeight: "900", color: "#4ade80", letterSpacing: "1px" },
+  atDay: { fontSize: "12px", color: "#556", fontWeight: "700", fontFamily: "sans-serif" },
+  atName: {
+    fontSize: "20px", fontWeight: "700", color: "#fff",
+    fontFamily: "'Helvetica Neue', sans-serif", marginBottom: "8px",
+  },
+  atDetail: { display: "flex", gap: "20px", marginBottom: "6px" },
+  atSpeed: { fontSize: "16px", fontWeight: "700", color: "#4ade80", fontFamily: "sans-serif" },
+  atDist: { fontSize: "14px", color: "#889", fontFamily: "sans-serif" },
+  atNote: { fontSize: "11px", color: "#556", fontFamily: "sans-serif" },
+  atTip: {
+    fontSize: "13px", color: "#889", fontFamily: "sans-serif",
+    textAlign: "center", padding: "16px", lineHeight: 1.5,
+  },
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<RallyTimer />);
+</script>
+</body>
+</html>
