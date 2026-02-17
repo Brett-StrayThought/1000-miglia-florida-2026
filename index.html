@@ -170,6 +170,12 @@ function RallyTimer() {
   const atWakeLockRef = useRef(null);
   const prevSpeedStatus = useRef(null);
   const [atConfirmStop, setAtConfirmStop] = useState(false);
+  // Average speed tracking
+  const [atStartTime, setAtStartTime] = useState(null);
+  const [atElapsed, setAtElapsed] = useState(0);
+  const [atTotalDist, setAtTotalDist] = useState(0); // meters
+  const lastPosRef = useRef(null);
+  const atTimerRef = useRef(null);
 
   // Persist to localStorage whenever completed or savedSplits change
   useEffect(() => {
@@ -211,12 +217,27 @@ function RallyTimer() {
   const msToKph = (ms) => ms * 3.6;
   const msToMph = (ms) => ms * 2.237;
 
+  // Haversine distance between two GPS coords in meters
+  const haversine = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
   const smoothedSpeed = speedHistory.length > 0
     ? speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length
     : null;
 
-  const displaySpeed = smoothedSpeed !== null
+  const liveSpeed = smoothedSpeed !== null
     ? (unitPref === "kph" ? msToKph(smoothedSpeed) : msToMph(smoothedSpeed))
+    : null;
+
+  // Average speed = total distance / elapsed time
+  const avgSpeedMs = atElapsed > 0 && atTotalDist > 0 ? atTotalDist / (atElapsed / 1000) : null;
+  const avgSpeed = avgSpeedMs !== null
+    ? (unitPref === "kph" ? msToKph(avgSpeedMs) : msToMph(avgSpeedMs))
     : null;
 
   const getSpeedStatus = (current, target) => {
@@ -243,12 +264,20 @@ function RallyTimer() {
     setSpeedHistory([]);
     prevSpeedStatus.current = null;
     setAtConfirmStop(false);
+    setAtStartTime(null);
+    setAtElapsed(0);
+    setAtTotalDist(0);
+    lastPosRef.current = null;
     setView("at-speed");
   };
 
   const beginGPS = () => {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
+    setAtStartTime(Date.now());
+    setAtElapsed(0);
+    setAtTotalDist(0);
+    lastPosRef.current = null;
     setAtTracking(true);
     setAtConfirmStop(false);
     setGpsError(null);
@@ -267,6 +296,8 @@ function RallyTimer() {
     setAtTracking(false);
     setCurrentSpeed(null);
     setSpeedHistory([]);
+    lastPosRef.current = null;
+    if (atTimerRef.current) { clearInterval(atTimerRef.current); atTimerRef.current = null; }
     prevSpeedStatus.current = null;
     setAtConfirmStop(false);
   };
@@ -289,6 +320,18 @@ function RallyTimer() {
         } else {
           setCurrentSpeed(0);
         }
+        // Accumulate distance for average speed
+        const { latitude, longitude } = position.coords;
+        if (lastPosRef.current) {
+          const d = haversine(lastPosRef.current.lat, lastPosRef.current.lon, latitude, longitude);
+          // Only accumulate if movement is larger than GPS accuracy (filter jitter)
+          if (d > Math.max(position.coords.accuracy * 0.5, 2)) {
+            setAtTotalDist((prev) => prev + d);
+            lastPosRef.current = { lat: latitude, lon: longitude };
+          }
+        } else {
+          lastPosRef.current = { lat: latitude, lon: longitude };
+        }
       },
       (error) => {
         if (error.code === 1) setGpsError("Location permission denied");
@@ -305,6 +348,15 @@ function RallyTimer() {
     };
   }, [atTracking]);
 
+  // Elapsed time ticker for average speed (updates every 500ms)
+  useEffect(() => {
+    if (!atTracking || !atStartTime) return;
+    const tick = () => setAtElapsed(Date.now() - atStartTime);
+    tick();
+    atTimerRef.current = setInterval(tick, 500);
+    return () => { clearInterval(atTimerRef.current); atTimerRef.current = null; };
+  }, [atTracking, atStartTime]);
+
   // Wake lock for AT GPS tracking
   useEffect(() => {
     if (atTracking && navigator.wakeLock) {
@@ -320,20 +372,19 @@ function RallyTimer() {
     };
   }, [atTracking]);
 
-  // Audio feedback on speed zone transitions
+  // Audio feedback on average speed zone transitions
   useEffect(() => {
-    if (!atTracking || displaySpeed === null || selectedAT === null) return;
+    if (!atTracking || avgSpeed === null || selectedAT === null) return;
     const at = AT_INFO[selectedAT];
     const target = unitPref === "kph" ? at.targetKph : at.targetMph;
-    if (displaySpeed < 2) return; // ignore when nearly stopped
-    const status = getSpeedStatus(displaySpeed, target);
+    const status = getSpeedStatus(avgSpeed, target);
     if (status !== prevSpeedStatus.current && status !== "waiting") {
       if (status === "on-pace") playBeep("perfect");
       else if (status === "too-fast") playBeep("early");
       else playBeep("late");
       prevSpeedStatus.current = status;
     }
-  }, [displaySpeed, atTracking, selectedAT, unitPref]);
+  }, [avgSpeed, atTracking, selectedAT, unitPref]);
 
   const handleStart = () => {
     // Init audio context on user gesture (required for iOS Safari)
@@ -599,14 +650,24 @@ function RallyTimer() {
   if (view === "at-speed" && selectedAT !== null) {
     const at = AT_INFO[selectedAT];
     const targetSpeed = unitPref === "kph" ? at.targetKph : at.targetMph;
-    const speedStatus = getSpeedStatus(displaySpeed, targetSpeed);
+    // Color coding based on average speed (what the rally measures)
+    const speedStatus = getSpeedStatus(avgSpeed, targetSpeed);
     const statusColor = speedStatusColor(speedStatus);
     const atBg = speedStatus === "on-pace" ? "#0a2a0a" : speedStatus === "too-fast" ? "#2a0a0a" : speedStatus === "too-slow" ? "#0a0a2a" : "#0a0a0f";
 
-    const delta = displaySpeed !== null ? displaySpeed - targetSpeed : null;
+    const delta = avgSpeed !== null ? avgSpeed - targetSpeed : null;
     const deltaAbs = delta !== null ? Math.abs(delta).toFixed(1) : null;
     const deltaSign = delta !== null ? (delta >= 0 ? "+" : "\u2212") : null;
     const instruction = speedStatus === "on-pace" ? "ON PACE" : speedStatus === "too-fast" ? "SLOW DOWN" : speedStatus === "too-slow" ? "SPEED UP" : "";
+
+    // Distance traveled display
+    const distTraveled = unitPref === "kph" ? (atTotalDist / 1000).toFixed(2) : (atTotalDist / 1609.344).toFixed(2);
+    const distUnit = unitPref === "kph" ? "km" : "mi";
+    // Elapsed time display
+    const elSec = Math.floor(atElapsed / 1000);
+    const elMin = Math.floor(elSec / 60);
+    const elRemSec = elSec % 60;
+    const elapsedStr = elMin > 0 ? `${elMin}:${String(elRemSec).padStart(2, "0")}` : `0:${String(elRemSec).padStart(2, "0")}`;
 
     return (
       <div style={{...S.container, backgroundColor: atTracking ? atBg : "#0a0a0f", transition: "background-color 0.5s", overflowY: "hidden"}}>
@@ -632,23 +693,35 @@ function RallyTimer() {
             </div>
 
             <div style={S.atSpeedDisplay}>
+              <div style={S.atAvgLabel}>AVG SPEED</div>
               <div style={{...S.atCurrentSpeed, color: atTracking ? statusColor : "#333"}}>
-                {atTracking && displaySpeed !== null ? displaySpeed.toFixed(1) : "--"}
+                {atTracking && avgSpeed !== null ? avgSpeed.toFixed(1) : "--"}
               </div>
               <div style={S.atSpeedUnit}>{unitPref}</div>
-              {atTracking && !atConfirmStop && displaySpeed !== null && displaySpeed >= 2 && (
+              {atTracking && !atConfirmStop && avgSpeed !== null && (
                 <div style={{...S.atDeltaRow, color: statusColor}}>
                   <div style={S.atDeltaValue}>{deltaSign}{deltaAbs} {unitPref}</div>
                   <div style={S.atDeltaInstruction}>{instruction}</div>
                 </div>
               )}
-              {atTracking && !atConfirmStop && (displaySpeed === null || displaySpeed < 2) && (
+              {atTracking && !atConfirmStop && avgSpeed === null && (
                 <div style={S.atWaitingText}>Acquiring speed...</div>
               )}
               {gpsError && (
                 <div style={S.atErrorText}>{gpsError}</div>
               )}
             </div>
+
+            {atTracking && !atConfirmStop && (
+              <div style={S.atLiveRow}>
+                <div style={S.atLiveLabel}>LIVE</div>
+                <div style={S.atLiveSpeed}>{liveSpeed !== null ? liveSpeed.toFixed(0) : "--"} {unitPref}</div>
+                <div style={S.atLiveSep}>{"\u2022"}</div>
+                <div style={S.atLiveLabel}>{distTraveled} {distUnit}</div>
+                <div style={S.atLiveSep}>{"\u2022"}</div>
+                <div style={S.atLiveLabel}>{elapsedStr}</div>
+              </div>
+            )}
 
             <div style={S.atUnitToggleRow}>
               <div style={S.atUnitToggle}>
@@ -1025,7 +1098,11 @@ const S = {
     fontFamily: "'Helvetica Neue', sans-serif",
   },
   atSpeedDisplay: {
-    textAlign: "center", padding: "24px 0 12px",
+    textAlign: "center", padding: "16px 0 8px",
+  },
+  atAvgLabel: {
+    fontSize: "13px", fontWeight: "700", color: "#667", letterSpacing: "3px",
+    fontFamily: "sans-serif", marginBottom: "4px",
   },
   atCurrentSpeed: {
     fontSize: "120px", fontWeight: "200", lineHeight: 1, letterSpacing: "-4px",
@@ -1049,6 +1126,19 @@ const S = {
   },
   atErrorText: {
     fontSize: "16px", color: "#ef4444", marginTop: "16px", fontFamily: "sans-serif",
+  },
+  atLiveRow: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+    padding: "8px 24px", fontFamily: "sans-serif",
+  },
+  atLiveLabel: {
+    fontSize: "16px", fontWeight: "600", color: "#889",
+  },
+  atLiveSpeed: {
+    fontSize: "16px", fontWeight: "700", color: "#ccd",
+  },
+  atLiveSep: {
+    fontSize: "10px", color: "#445",
   },
   atUnitToggleRow: {
     textAlign: "center", padding: "8px 0",
