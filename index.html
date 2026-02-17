@@ -19,8 +19,8 @@ body { background: #0a0a0f; }
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 20px));
 }
 .safe-top {
-  padding-top: constant(safe-area-inset-top);
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: calc(12px + constant(safe-area-inset-top)) !important;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
 }
 </style>
 </head>
