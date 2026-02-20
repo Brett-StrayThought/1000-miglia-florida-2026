@@ -58,6 +58,15 @@ const TRAINING_STAGES = [
   { id: "T5", dist: "90 m", target: 13.0 },
 ];
 
+// Ordered list of training ride group keys
+const TRAINING_RIDE_GROUPS = [
+  "FRI \u2014 Training Ride 1",
+  "FRI \u2014 Training Ride 2",
+  "FRI \u2014 Training Ride 3",
+  "FRI \u2014 Training Ride 4",
+  "FRI \u2014 Training Ride 5",
+];
+
 const STAGES = {
   "FRI \u2014 Training Ride 1": TRAINING_STAGES,
   "FRI \u2014 Training Ride 2": TRAINING_STAGES,
@@ -174,6 +183,16 @@ function RallyTimer() {
   const lapStartRef = useRef(null);
   const rafRef = useRef(null);
   const [flash, setFlash] = useState(null);
+
+  // Chained-ride mode: for "All Rides" combined training entry
+  // chainGroups = ordered array of group keys to chain through
+  // chainIndex = which ride in the chain we're currently on
+  // chainFinished = the current ride just finished, waiting for user to press NEXT or FINISH+NEXT already advanced
+  const [chainGroups, setChainGroups] = useState(null);
+  const [chainIndex, setChainIndex] = useState(0);
+  const [chainFinished, setChainFinished] = useState(false);
+  const isChaining = chainGroups !== null;
+  const isLastChainRide = isChaining && chainIndex >= chainGroups.length - 1;
 
   // AT GPS speed tracking
   const [selectedAT, setSelectedAT] = useState(null);
@@ -525,11 +544,69 @@ function RallyTimer() {
       lapStartRef.current = null;
       setStageIndex(stages.length);
       setCompleted((prev) => new Set(prev).add(selectedGroup));
+      // In chain mode, mark ride finished (don't go to done view yet if more rides)
+      if (isChaining && !isLastChainRide) {
+        setChainFinished(true);
+      }
     } else {
       lapStartRef.current = now;
       setElapsed(0);
       setStageIndex(stageIndex + 1);
     }
+  };
+
+  // FINISH + NEXT: record last split, save ride, immediately start next ride (timer continuous)
+  const handleFinishAndNext = () => {
+    if (!running || !currentStage || !isChaining || isLastChainRide) return;
+    const now = performance.now();
+    const lapTime = (now - lapStartRef.current) / 1000;
+    const delta = lapTime - currentStage.target;
+    const absDelta = Math.abs(delta);
+
+    let quality;
+    if (absDelta <= 0.5) quality = "perfect";
+    else if (delta < 0) quality = "early";
+    else quality = "late";
+
+    setFlash(quality);
+    setTimeout(() => setFlash(null), 800);
+    playBeep(quality);
+
+    const newSplit = { id: currentStage.id, target: currentStage.target, actual: lapTime, delta, quality };
+
+    // Save splits for current ride
+    setSplits((prev) => {
+      const updated = [newSplit, ...prev];
+      setSavedSplits((s) => ({ ...s, [selectedGroup]: updated }));
+      return updated;
+    });
+    setCompleted((prev) => new Set(prev).add(selectedGroup));
+
+    // Advance to next ride, keep timer running
+    const nextIdx = chainIndex + 1;
+    const nextGroup = chainGroups[nextIdx];
+    setChainIndex(nextIdx);
+    setSelectedGroup(nextGroup);
+    setStageIndex(0);
+    setSplits([]);
+    lapStartRef.current = now; // continuous timing — next ride starts from this moment
+    setElapsed(0);
+    // running stays true, rafRef keeps ticking
+  };
+
+  // After FINISH in chain mode, user presses NEXT to load next ride (manual start)
+  const handleChainNext = () => {
+    if (!isChaining || isLastChainRide) return;
+    const nextIdx = chainIndex + 1;
+    const nextGroup = chainGroups[nextIdx];
+    setChainIndex(nextIdx);
+    setChainFinished(false);
+    setSelectedGroup(nextGroup);
+    setStageIndex(0);
+    setSplits([]);
+    setElapsed(0);
+    setRunning(false);
+    lapStartRef.current = null;
   };
 
   const handleReset = () => {
@@ -561,12 +638,15 @@ function RallyTimer() {
     });
   };
 
-  const selectGroup = (group) => {
+  const selectGroup = (group, chain = null) => {
     setSelectedGroup(group);
     setElapsed(0);
     setRunning(false);
     lapStartRef.current = null;
-    if (completed.has(group) && savedSplits[group]) {
+    setChainGroups(chain);
+    setChainIndex(0);
+    setChainFinished(false);
+    if (!chain && completed.has(group) && savedSplits[group]) {
       setSplits(savedSplits[group]);
       setStageIndex(STAGES[group].length); // triggers done view
     } else {
@@ -685,6 +765,7 @@ function RallyTimer() {
 
   const SCHEDULE = [
     { day: "FRIDAY FEB 20", label: "Training \u2014 JB Proving Grounds, Naples", items: [
+      { type: "chain", groups: TRAINING_RIDE_GROUPS, label: "All Rides", stageCount: 25 },
       { type: "tt", group: "FRI \u2014 Training Ride 1" },
       { type: "tt", group: "FRI \u2014 Training Ride 2" },
       { type: "tt", group: "FRI \u2014 Training Ride 3" },
@@ -729,6 +810,19 @@ function RallyTimer() {
             <div style={S.menuSectionSub}>{day.label}</div>
             <div style={S.menuGrid}>
               {day.items.map((item, i) => {
+                if (item.type === "chain") {
+                  const allDone = item.groups.every((g) => completed.has(g));
+                  return (
+                    <button key={i} style={{...S.menuBtn, borderColor: "#c41e3a", opacity: allDone ? 0.5 : 1}} onClick={() => selectGroup(item.groups[0], item.groups)}>
+                      <span style={S.menuBtnLabel}>
+                        <span style={S.ttBadge}>TT</span> {item.label}
+                      </span>
+                      <span style={S.menuBtnRight}>
+                        <span style={S.menuBtnInfo}>{item.groups.length} rides {"\u00B7"} {item.stageCount} stages</span>
+                      </span>
+                    </button>
+                  );
+                }
                 if (item.type === "tt") {
                   const stgs = STAGES[item.group];
                   const shortName = item.group.split(" \u2014 ")[1];
@@ -932,21 +1026,36 @@ function RallyTimer() {
   return (
     <div className="container-fixed" style={{...S.container, backgroundColor: bgColor, transition: "background-color 0.3s"}}>
       <div className="safe-top" style={S.topBar}>
-        <button style={S.backBtn} onClick={() => { handleReset(); setView("menu"); }}>
+        <button style={S.backBtn} onClick={() => { handleReset(); setChainGroups(null); setChainIndex(0); setChainFinished(false); setView("menu"); }}>
           {"\u2190"} BACK
         </button>
-        <span style={S.topBarTitle}>{selectedGroup}</span>
+        <span style={S.topBarTitle}>
+          {selectedGroup}
+          {isChaining && <span style={{color: "#667"}}> ({chainIndex + 1}/{chainGroups.length})</span>}
+        </span>
       </div>
 
       {done ? (
-        <div style={S.doneContainer}>
-          <div style={S.doneEmoji}>{"\uD83C\uDFC1"}</div>
-          <div style={S.doneText}>ALL STAGES COMPLETE</div>
-          <div style={S.splitsList}>
-            {splits.map((s, i) => (
-              <SplitRow key={i} split={s} />
-            ))}
+        <div style={S.timerLayout}>
+          <div style={S.timerScrollArea}>
+            <div style={S.doneContainer}>
+              <div style={S.doneEmoji}>{"\uD83C\uDFC1"}</div>
+              <div style={S.doneText}>{chainFinished ? "RIDE COMPLETE" : "ALL STAGES COMPLETE"}</div>
+              <div style={S.splitsList}>
+                {splits.map((s, i) => (
+                  <SplitRow key={i} split={s} />
+                ))}
+              </div>
+            </div>
           </div>
+          {chainFinished && !isLastChainRide && (
+            <div className="btn-container-fixed" style={S.btnContainerFixed}>
+              <button style={S.chainNextBtn} onClick={handleChainNext}>
+                <div style={S.btnText}>NEXT RIDE</div>
+                <div style={S.btnSub}>{chainGroups[chainIndex + 1].split(" \u2014 ")[1]}</div>
+              </button>
+            </div>
+          )}
         </div>
       ) : currentStage ? (
         <div style={S.timerLayout}>
@@ -1000,6 +1109,12 @@ function RallyTimer() {
                 <span style={S.nextTarget}>{stages[stageIndex + 1].target.toFixed(1)}s</span>
               </div>
             )}
+            {running && isLastStage && isChaining && !isLastChainRide && (
+              <div style={{...S.nextStageBar, borderColor: "#c41e3a"}}>
+                <span style={{...S.nextLabel, color: "#c41e3a"}}>NEXT RIDE</span>
+                <span style={S.nextId}>{chainGroups[chainIndex + 1].split(" \u2014 ")[1]}</span>
+              </div>
+            )}
 
             {splits.length > 0 && (
               <div style={S.splitsList}>
@@ -1017,6 +1132,17 @@ function RallyTimer() {
                 <div style={S.btnText}>START</div>
                 <div style={S.btnSub}>tap at first sensor</div>
               </button>
+            ) : isLastStage && isChaining && !isLastChainRide ? (
+              <div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
+                <button style={S.finishNextBtn} onClick={handleFinishAndNext}>
+                  <div style={S.btnText}>FINISH + NEXT</div>
+                  <div style={S.btnSub}>continuous timing into next ride</div>
+                </button>
+                <button style={S.finishBtn} onClick={handleLap}>
+                  <div style={{...S.btnText, fontSize: "20px"}}>FINISH</div>
+                  <div style={S.btnSub}>stop {"\u2014"} start next ride manually</div>
+                </button>
+              </div>
             ) : isLastStage ? (
               <button style={S.finishBtn} onClick={handleLap}>
                 <div style={S.btnText}>FINISH</div>
@@ -1160,6 +1286,14 @@ const S = {
   finishBtn: {
     width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #f59e0b",
     background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", cursor: "pointer", textAlign: "center",
+  },
+  finishNextBtn: {
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #c41e3a",
+    background: "rgba(196, 30, 58, 0.2)", color: "#fff", cursor: "pointer", textAlign: "center",
+  },
+  chainNextBtn: {
+    width: "100%", padding: "18px", borderRadius: "12px", border: "2px solid #22c55e",
+    background: "rgba(34, 197, 94, 0.1)", color: "#22c55e", cursor: "pointer", textAlign: "center",
   },
   btnText: {
     fontSize: "28px", fontWeight: "900", letterSpacing: "4px", fontFamily: "'Helvetica Neue', sans-serif",
