@@ -187,13 +187,18 @@ function RallyTimer() {
   const atWakeLockRef = useRef(null);
   const prevSpeedStatus = useRef(null);
   const [atConfirmStop, setAtConfirmStop] = useState(false);
-  // Average speed tracking
+  // Average speed tracking — uses time-weighted GPS speed samples
   const [atStartTime, setAtStartTime] = useState(null);
   const [atElapsed, setAtElapsed] = useState(0);
   const [atTotalDist, setAtTotalDist] = useState(0); // meters
   const lastPosRef = useRef(null);
   const atTimerRef = useRef(null);
   const [atDone, setAtDone] = useState(false); // showing saved results
+  // Speed-based average: accumulate (speed * timeDelta) and total time
+  const speedAccumRef = useRef({ weightedSum: 0, totalTime: 0, lastTimestamp: null });
+  // Instantaneous speed (smoothed over ~3s window)
+  const [instantSpeed, setInstantSpeed] = useState(null);
+  const instantSpeedBuf = useRef([]);
 
   // Persist to localStorage whenever completed or savedSplits change
   useEffect(() => {
@@ -252,8 +257,14 @@ function RallyTimer() {
     ? (unitPref === "kph" ? msToKph(smoothedSpeed) : msToMph(smoothedSpeed))
     : null;
 
-  // Average speed = total distance / elapsed time
-  const avgSpeedMs = atElapsed > 0 && atTotalDist > 0 ? atTotalDist / (atElapsed / 1000) : null;
+  // Instantaneous speed display (smoothed over ~3s)
+  const instantSpeedDisplay = instantSpeed !== null
+    ? (unitPref === "kph" ? msToKph(instantSpeed) : msToMph(instantSpeed))
+    : null;
+
+  // Average speed = time-weighted average of GPS speed samples (m/s)
+  const accum = speedAccumRef.current;
+  const avgSpeedMs = accum.totalTime > 2 ? accum.weightedSum / accum.totalTime : null;
   const avgSpeed = avgSpeedMs !== null
     ? (unitPref === "kph" ? msToKph(avgSpeedMs) : msToMph(avgSpeedMs))
     : null;
@@ -281,7 +292,10 @@ function RallyTimer() {
     setGpsAccuracy(null);
     setGpsError(null);
     setSpeedHistory([]);
+    setInstantSpeed(null);
+    instantSpeedBuf.current = [];
     prevSpeedStatus.current = null;
+    speedAccumRef.current = { weightedSum: 0, totalTime: 0, lastTimestamp: null };
     setAtConfirmStop(false);
     setAtStartTime(null);
     lastPosRef.current = null;
@@ -302,13 +316,21 @@ function RallyTimer() {
   const beginGPS = () => {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
+    // Full reset of all tracking state
     setAtStartTime(Date.now());
     setAtElapsed(0);
     setAtTotalDist(0);
+    setCurrentSpeed(null);
+    setSpeedHistory([]);
+    setInstantSpeed(null);
+    instantSpeedBuf.current = [];
+    setGpsAccuracy(null);
+    setGpsError(null);
     lastPosRef.current = null;
+    prevSpeedStatus.current = null;
+    speedAccumRef.current = { weightedSum: 0, totalTime: 0, lastTimestamp: null };
     setAtTracking(true);
     setAtConfirmStop(false);
-    setGpsError(null);
   };
 
   const requestStopGPS = () => {
@@ -323,9 +345,10 @@ function RallyTimer() {
   const confirmStopGPS = (saveResult) => {
     if (atTimerRef.current) { clearInterval(atTimerRef.current); atTimerRef.current = null; }
     // Save result if we have data
-    if (saveResult && selectedAT !== null && atTotalDist > 0 && atElapsed > 0) {
+    const acc = speedAccumRef.current;
+    if (saveResult && selectedAT !== null && acc.totalTime > 2 && atElapsed > 0) {
       const at = AT_INFO[selectedAT];
-      const avgMs = atTotalDist / (atElapsed / 1000);
+      const avgMs = acc.weightedSum / acc.totalTime;
       const result = {
         id: at.id,
         name: at.name,
@@ -343,8 +366,11 @@ function RallyTimer() {
     setAtTracking(false);
     setCurrentSpeed(null);
     setSpeedHistory([]);
+    setInstantSpeed(null);
+    instantSpeedBuf.current = [];
     lastPosRef.current = null;
     prevSpeedStatus.current = null;
+    speedAccumRef.current = { weightedSum: 0, totalTime: 0, lastTimestamp: null };
     setAtConfirmStop(false);
   };
 
@@ -360,25 +386,46 @@ function RallyTimer() {
         setGpsError(null);
         setGpsAccuracy(position.coords.accuracy);
         const rawSpeed = position.coords.speed;
+        const now = position.timestamp || Date.now();
+
+        // Instantaneous speed: smoothed over ~3s sliding window
         if (rawSpeed !== null && rawSpeed >= 0) {
           setCurrentSpeed(rawSpeed);
           setSpeedHistory((prev) => [...prev, rawSpeed].slice(-5));
+          instantSpeedBuf.current = [...instantSpeedBuf.current, { speed: rawSpeed, t: now }]
+            .filter(s => now - s.t < 3000);
+          const buf = instantSpeedBuf.current;
+          if (buf.length >= 2) {
+            setInstantSpeed(buf.reduce((a, b) => a + b.speed, 0) / buf.length);
+          }
         } else {
           setCurrentSpeed(0);
         }
-        // Accumulate distance for average speed
+
+        // Time-weighted speed accumulation for average speed
+        // Uses GPS-reported speed (Doppler-derived, more stable than position deltas)
+        if (rawSpeed !== null && rawSpeed >= 0) {
+          const acc = speedAccumRef.current;
+          if (acc.lastTimestamp !== null) {
+            const dt = (now - acc.lastTimestamp) / 1000; // seconds
+            if (dt > 0 && dt < 5) { // ignore gaps > 5s (signal loss)
+              acc.weightedSum += rawSpeed * dt;
+              acc.totalTime += dt;
+            }
+          }
+          acc.lastTimestamp = now;
+        }
+
+        // Accumulate distance for progress bar (using position, separate from avg speed calc)
         const { latitude, longitude, accuracy } = position.coords;
         if (lastPosRef.current) {
           const d = haversine(lastPosRef.current.lat, lastPosRef.current.lon, latitude, longitude);
-          // Only accumulate if movement exceeds GPS accuracy (filter jitter/drift)
           if (d > Math.max(accuracy, 5)) {
             setAtTotalDist((prev) => prev + d);
             lastPosRef.current = { lat: latitude, lon: longitude };
           }
         } else {
-          // First fix — just record position, don't measure from it yet
-          // Wait for a second reading to establish baseline
-          lastPosRef.current = { lat: latitude, lon: longitude, isFirst: true };
+          lastPosRef.current = { lat: latitude, lon: longitude };
         }
       },
       (error) => {
@@ -799,7 +846,7 @@ function RallyTimer() {
 
             <div style={S.atSpeedDisplay}>
               <div style={S.atAvgLabel}>{atDone && !atTracking ? "RESULT" : "AVG SPEED"}</div>
-              <div style={{...S.atCurrentSpeed, color: (atTracking || atDone) ? statusColor : "#333"}}>
+              <div style={{...S.atBigSpeed, color: (atTracking || atDone) ? statusColor : "#333"}}>
                 {(atTracking || atDone) && avgSpeed !== null ? avgSpeed.toFixed(1) : "--"}
               </div>
               <div style={S.atSpeedUnit}>{unitPref}</div>
@@ -809,7 +856,14 @@ function RallyTimer() {
                   <div style={S.atDeltaInstruction}>{instruction}</div>
                 </div>
               )}
-              {atTracking && !atConfirmStop && avgSpeed === null && (
+              {atTracking && !atConfirmStop && instantSpeedDisplay !== null && (
+                <div style={S.atInstantRow}>
+                  <span style={S.atInstantLabel}>NOW</span>
+                  <span style={S.atInstantValue}>{instantSpeedDisplay.toFixed(1)}</span>
+                  <span style={S.atInstantUnit}>{unitPref}</span>
+                </div>
+              )}
+              {atTracking && !atConfirmStop && avgSpeed === null && instantSpeedDisplay === null && (
                 <div style={S.atWaitingText}>Acquiring speed...</div>
               )}
               {gpsError && (
@@ -819,9 +873,6 @@ function RallyTimer() {
 
             {(atTracking && !atConfirmStop) || (atDone && !atTracking) ? (
               <div style={S.atLiveRow}>
-                {atTracking && <><div style={S.atLiveLabel}>LIVE</div>
-                <div style={S.atLiveSpeed}>{liveSpeed !== null ? liveSpeed.toFixed(0) : "--"} {unitPref}</div>
-                <div style={S.atLiveSep}>{"\u2022"}</div></>}
                 <div style={S.atLiveLabel}>{distTraveled} {distUnit}</div>
                 <div style={S.atLiveSep}>{"\u2022"}</div>
                 <div style={S.atLiveLabel}>{elapsedStr}</div>
@@ -1225,7 +1276,7 @@ const S = {
     fontSize: "13px", fontWeight: "700", color: "#667", letterSpacing: "3px",
     fontFamily: "sans-serif", marginBottom: "4px",
   },
-  atCurrentSpeed: {
+  atBigSpeed: {
     fontSize: "120px", fontWeight: "200", lineHeight: 1, letterSpacing: "-4px",
   },
   atSpeedUnit: {
@@ -1241,6 +1292,21 @@ const S = {
   atDeltaInstruction: {
     fontSize: "16px", fontWeight: "600", letterSpacing: "2px", marginTop: "4px",
     fontFamily: "sans-serif",
+  },
+  atInstantRow: {
+    display: "flex", alignItems: "baseline", justifyContent: "center",
+    gap: "8px", marginTop: "16px", padding: "10px 0",
+    borderTop: "1px solid #1a1a25",
+  },
+  atInstantLabel: {
+    fontSize: "13px", fontWeight: "700", color: "#667", letterSpacing: "2px",
+    fontFamily: "sans-serif",
+  },
+  atInstantValue: {
+    fontSize: "36px", fontWeight: "300", color: "#ccd", lineHeight: 1,
+  },
+  atInstantUnit: {
+    fontSize: "14px", fontWeight: "600", color: "#667", fontFamily: "sans-serif",
   },
   atWaitingText: {
     fontSize: "18px", color: "#667", marginTop: "20px", fontFamily: "sans-serif",
