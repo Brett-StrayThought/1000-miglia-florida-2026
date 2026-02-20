@@ -857,15 +857,12 @@ function RallyTimer() {
                   <div style={S.atDeltaInstruction}>{instruction}</div>
                 </div>
               )}
-              {atTracking && !atConfirmStop && instantSpeedDisplay !== null && (
+              {atTracking && !atConfirmStop && (
                 <div style={S.atInstantRow}>
                   <span style={S.atInstantLabel}>NOW</span>
-                  <span style={S.atInstantValue}>{instantSpeedDisplay.toFixed(1)}</span>
+                  <span style={S.atInstantValue}>{instantSpeedDisplay !== null ? instantSpeedDisplay.toFixed(1) : "--"}</span>
                   <span style={S.atInstantUnit}>{unitPref}</span>
                 </div>
-              )}
-              {atTracking && !atConfirmStop && avgSpeed === null && instantSpeedDisplay === null && (
-                <div style={S.atWaitingText}>Acquiring speed...</div>
               )}
               {gpsError && (
                 <div style={S.atErrorText}>{gpsError}</div>
